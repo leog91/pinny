@@ -14,8 +14,13 @@ public partial class App : Application
         base.OnStartup(e);
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
-        if (e.Args is ["--data-dir", var directory])
-            NoteStorage.SetDataDirectory(directory);
+        // Command-line overrides are useful for isolated runs; a user environment
+        // variable also works when launching the published app by double-clicking.
+        string? dataDirectory = e.Args is ["--data-dir", var directory]
+            ? directory
+            : Environment.GetEnvironmentVariable("PINNY_DATA_DIR");
+        if (!string.IsNullOrWhiteSpace(dataDirectory))
+            NoteStorage.SetDataDirectory(dataDirectory);
 
         List<NoteState> notes;
         try
