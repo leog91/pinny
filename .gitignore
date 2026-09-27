@@ -1,0 +1,14 @@
+# Build and publish output
+**/bin/
+**/obj/
+dist/
+
+# Local IDE files
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# Test output
+TestResults/
