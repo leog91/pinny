@@ -1,37 +1,48 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Pinny;
 
 public static class NoteStorage
 {
-    private static readonly string DirectoryPath = Path.Combine(
+    private static string DirectoryPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Pinny");
 
-    private static readonly string FilePath = Path.Combine(DirectoryPath, "note.json");
+    private static string NotesPath => Path.Combine(DirectoryPath, "notes.json");
+    private static string LegacyNotePath => Path.Combine(DirectoryPath, "note.json");
 
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
+    public static void SetDataDirectory(string directory) => DirectoryPath = directory;
 
-    public static NoteState Load()
+    public static List<NoteState> LoadAll()
     {
-        try
+        if (File.Exists(NotesPath))
         {
-            if (File.Exists(FilePath))
-                return JsonSerializer.Deserialize<NoteState>(File.ReadAllText(FilePath)) ?? new NoteState();
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
-        {
-            System.Diagnostics.Debug.WriteLine($"Could not load note: {exception}");
+            List<NoteState> notes = JsonSerializer.Deserialize(
+                File.ReadAllText(NotesPath), NoteJsonContext.Default.ListNoteState) ?? new List<NoteState>();
+            return notes;
         }
 
-        return new NoteState();
+        // Preserve the note created by earlier single-note versions.
+        if (File.Exists(LegacyNotePath))
+        {
+            NoteState? oldNote = JsonSerializer.Deserialize(File.ReadAllText(LegacyNotePath), NoteJsonContext.Default.NoteState);
+            return oldNote is null ? new List<NoteState>() : new List<NoteState> { oldNote };
+        }
+
+        return new List<NoteState>();
     }
 
-    public static void Save(NoteState state)
+    public static void SaveAll(IEnumerable<NoteState> notes)
     {
         Directory.CreateDirectory(DirectoryPath);
-        string temporaryPath = FilePath + ".tmp";
-        File.WriteAllText(temporaryPath, JsonSerializer.Serialize(state, JsonOptions));
-        File.Move(temporaryPath, FilePath, overwrite: true);
+        string temporaryPath = NotesPath + ".tmp";
+        File.WriteAllText(temporaryPath, JsonSerializer.Serialize(notes.ToList(), NoteJsonContext.Default.ListNoteState));
+        File.Move(temporaryPath, NotesPath, overwrite: true);
     }
 }
+
+[JsonSourceGenerationOptions(WriteIndented = true)]
+[JsonSerializable(typeof(List<NoteState>))]
+[JsonSerializable(typeof(NoteState))]
+internal partial class NoteJsonContext : JsonSerializerContext { }

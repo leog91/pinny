@@ -1,17 +1,19 @@
 # Pinny
 
-Pinny is a small, single-note Windows desktop app built with C#, .NET 8, and WPF. It uses a local JSON file, with no database, web view, local server, or background service.
+Pinny is a small Windows desktop notes app built with C#, .NET 8, and WPF. It uses local JSON files, with no database, web view, local server, or background service.
 
 ## Use the app
 
 On Windows x64, double-click `dist\Pinny.exe` after publishing it. This self-contained build includes the .NET runtime and needs no console or separate .NET installation.
 
-- Type directly into the note.
-- Drag the header to move it; drag an edge or corner to resize it.
-- Click **Theme** to try Light, Dark, or Paper.
-- Click the diamond to toggle always-on-top; click **×** to close.
+- Type directly into any note. Each note has its own text, position, size, pin state, and theme.
+- Click **+** to create another note. New notes open slightly offset from the current one.
+- Drag a note's header to move it; drag an edge or corner to resize it.
+- Click **Menu** to choose Light, Dark, or Paper, or to **Quit Pinny** while keeping all notes.
+- Click the diamond to toggle always-on-top for that note.
+- Click **×** (or close that window from the taskbar) to delete only that note. Deleting the last note exits Pinny; the next launch starts with a blank note.
 
-Pinny saves text, window position and size, pin state, and theme to `%LOCALAPPDATA%\Pinny\note.json`. It saves 500 ms after the last change and again on close. If the saved position is off-screen after a monitor change, Pinny moves the window back into view.
+Pinny saves all notes to `%LOCALAPPDATA%\Pinny\notes.json`. Changes save 500 ms after the last edit, move, resize, pin toggle, or theme change, and again when quitting. When upgrading from the single-note version, Pinny loads the old `%LOCALAPPDATA%\Pinny\note.json` if `notes.json` does not exist. The old file is left in place as a backup. If a saved position is off-screen after a monitor change, Pinny moves that window back into view.
 
 ## Requirements
 
@@ -43,7 +45,8 @@ The output is `dist\Pinny.exe`. `bin`, `obj`, and `dist` are ignored by Git. A G
 
 ## Project layout
 
-- `Pinny/MainWindow.xaml` and its code-behind: window, themes, interactions, and one-shot save debounce.
-- `Pinny/NoteState.cs`: fields stored for the note.
-- `Pinny/NoteStorage.cs`: local JSON read and write.
+- `Pinny/App.xaml.cs`: creates note windows and coordinates save, delete, and quit.
+- `Pinny/MainWindow.xaml` and its code-behind: note UI, themes, and one-shot save debounce.
+- `Pinny/NoteState.cs`: fields stored for each note.
+- `Pinny/NoteStorage.cs`: local JSON read, write, and single-note migration.
 - `Pinny/Assets`: app icon.

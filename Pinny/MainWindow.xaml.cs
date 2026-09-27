@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -8,26 +9,37 @@ namespace Pinny;
 
 public partial class MainWindow : Window
 {
+    private readonly Guid _id;
     private readonly DispatcherTimer _saveTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
     private bool _restoring = true;
-    private bool _saveErrorShown;
     private string _theme = "Light";
 
-    public MainWindow()
+    public MainWindow(NoteState state)
     {
+        _id = state.Id;
         InitializeComponent();
         _saveTimer.Tick += SaveTimer_Tick;
-        RestoreState();
+        RestoreState(state);
         LocationChanged += WindowGeometryChanged;
         SizeChanged += WindowGeometryChanged;
         Closing += MainWindow_Closing;
         Loaded += (_, _) => NoteTextBox.Focus();
     }
 
-    private void RestoreState()
+    public NoteState CaptureState() => new()
     {
-        _restoring = true;
-        NoteState state = NoteStorage.Load();
+        Id = _id,
+        Text = NoteTextBox.Text,
+        Left = Left,
+        Top = Top,
+        Width = ActualWidth,
+        Height = ActualHeight,
+        IsPinned = Topmost,
+        Theme = _theme
+    };
+
+    private void RestoreState(NoteState state)
+    {
         ApplyTheme(state.Theme);
         NoteTextBox.Text = state.Text ?? string.Empty;
         Width = double.IsFinite(state.Width) ? Math.Max(MinWidth, state.Width) : 320;
@@ -64,6 +76,8 @@ public partial class MainWindow : Window
             DragMove();
     }
 
+    private void NewNoteButton_Click(object sender, RoutedEventArgs e) => ((App)Application.Current).CreateNote(this);
+
     private void PinButton_Changed(object sender, RoutedEventArgs e)
     {
         if (PinButton is null)
@@ -93,6 +107,10 @@ public partial class MainWindow : Window
         }
     }
 
+    private void QuitMenuItem_Click(object sender, RoutedEventArgs e) => ((App)Application.Current).Quit();
+
+    private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
+
     private void ApplyTheme(string? theme)
     {
         _theme = theme is "Dark" or "Paper" ? theme : "Light";
@@ -115,7 +133,7 @@ public partial class MainWindow : Window
         NoteTextBox.CaretBrush = Brush(text);
         NoteTextBox.SelectionBrush = Brush(selection);
 
-        foreach (Control button in new Control[] { ThemeButton, PinButton, CloseButton })
+        foreach (Control button in new Control[] { NewNoteButton, ThemeButton, PinButton, CloseButton })
         {
             button.Background = Brush(header);
             button.Foreground = Brush(text);
@@ -135,9 +153,8 @@ public partial class MainWindow : Window
             item.IsChecked = (string)item.Tag == _theme;
         }
 
-        ThemeButton.ToolTip = $"Theme: {_theme}";
+        ThemeButton.ToolTip = $"Themes and quit (current: {_theme})";
     }
-    private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
 
     private void NoteTextBox_TextChanged(object sender, TextChangedEventArgs e) => QueueSave();
 
@@ -155,42 +172,12 @@ public partial class MainWindow : Window
     private void SaveTimer_Tick(object? sender, EventArgs e)
     {
         _saveTimer.Stop();
-        SaveState();
+        ((App)Application.Current).TrySaveAll();
     }
 
-    private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+    private void MainWindow_Closing(object? sender, CancelEventArgs e)
     {
         _saveTimer.Stop();
-        e.Cancel = !SaveState();
-    }
-
-    private bool SaveState()
-    {
-        try
-        {
-            NoteStorage.Save(new NoteState
-            {
-                Text = NoteTextBox.Text,
-                Left = Left,
-                Top = Top,
-                Width = ActualWidth,
-                Height = ActualHeight,
-                IsPinned = Topmost,
-                Theme = _theme
-            });
-            _saveErrorShown = false;
-            return true;
-        }
-        catch (Exception exception) when (exception is System.IO.IOException or UnauthorizedAccessException)
-        {
-            System.Diagnostics.Debug.WriteLine($"Could not save note: {exception}");
-            if (!_saveErrorShown)
-            {
-                _saveErrorShown = true;
-                MessageBox.Show(this, $"Pinny could not save your note.\n\n{exception.Message}",
-                    "Save failed", MessageBoxButton.OK, MessageBoxImage.Warning);
-            }
-            return false;
-        }
+        e.Cancel = !((App)Application.Current).TryCloseNote(this);
     }
 }
