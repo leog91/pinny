@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <AssemblyName>Pinny</AssemblyName>
+    <ApplicationIcon>Assets\Pinny.ico</ApplicationIcon>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../Baseline/NoteState.cs" Link="NoteState.cs" />
+    <Compile Include="../Baseline/NoteStorage.cs" Link="NoteStorage.cs" />
+    <Resource Include="Assets\Pinny.ico" />
+  </ItemGroup>
+</Project>

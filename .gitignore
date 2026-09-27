@@ -12,3 +12,5 @@ dist/
 
 # Test output
 TestResults/
+Benchmarks/.data/
+Benchmarks/results.csv
