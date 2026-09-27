@@ -11,6 +11,8 @@ These are the simple app versions used to compare UI technologies. Continue norm
 
 The WPF snapshot owns its XAML, code-behind, and icon. The other two builds reference only the copied baseline model, storage, and icon. None references active `../Pinny/` source. This means editing the active app will not silently change the benchmark builds.
 
-Treat these folders as frozen when adding features. If a new comparison is useful later, create a new dated snapshot and record new results rather than changing the archived source or chart. The only post-measurement change to these snapshots was to put their default note data under separate `%LOCALAPPDATA%\Pinny.Baseline\<UI>\` folders; `--data-dir` still overrides that path for tests. The original measurements used isolated `--data-dir` folders, so this default-path change does not affect their method.
+Treat the three C# folders as frozen when adding features. If a new comparison is useful later, create a new snapshot rather than changing these reference builds. They use separate `%LOCALAPPDATA%\Pinny.Baseline\<UI>\` default folders; `--data-dir` overrides that path for isolated tests.
+
+`Pinny.Rust/` and `Pinny.Go/` are additional independent Win32 experiments for runtime cost comparisons. Rust creates benchmark notes in memory. Go now saves and restores notes in the same JSON format as the C# builds, using its own default data directory. Both are included in the [single five-build benchmark](../Benchmarks/README.md). See [native build and run commands](../Benchmarks/README.md#rust-and-go-win32-experiments).
 
 From the repository root on Windows, run `Benchmarks\Publish-Baseline.ps1` with the .NET 8 SDK to produce the three double-clickable executables in `dist\baseline-2026-09-27\`. See [benchmark method and results](../Benchmarks/README.md).

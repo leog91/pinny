@@ -48,9 +48,13 @@ function Click-NativeHeader([IntPtr]$window, [int]$x) {
     [void][PinnySmokeNative]::SendMessageW($window, 0x0202, [IntPtr]::Zero, $position)
 }
 
-foreach ($variant in @('winforms', 'win32')) {
-    $exe = Join-Path $root ("dist\baseline-2026-09-27\$variant\" +
-        @{ winforms = 'Pinny.WinForms.exe'; win32 = 'Pinny.Win32.exe' }[$variant])
+foreach ($variant in @('winforms', 'win32', 'go')) {
+    $exe = if ($variant -eq 'go') {
+        Join-Path $root 'dist\native\Pinny.Go.exe'
+    } else {
+        Join-Path $root ("dist\baseline-2026-09-27\$variant\" +
+            @{ winforms = 'Pinny.WinForms.exe'; win32 = 'Pinny.Win32.exe' }[$variant])
+    }
     $data = Join-Path $dataRoot "functional-$variant"
     New-Item -ItemType Directory -Path $data -Force | Out-Null
     $initial = @([ordered]@{ Id = [guid]::NewGuid().ToString(); Text = 'Before';
@@ -71,7 +75,7 @@ foreach ($variant in @('winforms', 'win32')) {
         if ($edit -eq [IntPtr]::Zero) { throw "$variant editor not found" }
         [void][PinnySmokeNative]::SendMessageW($edit, 0x000C, [IntPtr]::Zero, "Edited $variant")
         [void][PinnySmokeNative]::MoveWindow($window, 200, 200, 400, 300, $true)
-        if ($variant -eq 'win32') {
+        if ($variant -ne 'winforms') {
             Click-NativeHeader $window 346 # Pin button in a 400-pixel window.
         } else {
             $button = Find-Child $window 'BUTTON' '◇'
@@ -87,6 +91,11 @@ foreach ($variant in @('winforms', 'win32')) {
             throw "$variant did not persist text, geometry, and pin state as expected"
         }
         Write-Host "$variant saved text, geometry, and pin state."
+        if ($variant -eq 'go') {
+            [void][PinnySmokeNative]::SendMessageW($window, 0x0111, [IntPtr]4, [IntPtr]::Zero) # Quit, preserving notes.
+            if (-not $process.WaitForExit(5000)) { throw 'go did not quit normally' }
+            Write-Host 'go quit while preserving its note.'
+        }
     }
     finally {
         $process.Refresh()
@@ -119,7 +128,7 @@ foreach ($variant in @('winforms', 'win32')) {
         }
         Write-Host "$variant restored text, geometry, and pin state."
 
-        if ($variant -eq 'win32') {
+        if ($variant -ne 'winforms') {
             Click-NativeHeader $window 266 # New button.
         } else {
             $button = Find-Child $window 'BUTTON' '+'
@@ -130,7 +139,7 @@ foreach ($variant in @('winforms', 'win32')) {
         $saved = @(Get-Content (Join-Path $data 'notes.json') -Raw | ConvertFrom-Json)
         if ($saved.Count -ne 2) { throw "$variant did not create and save a second note" }
         Write-Host "$variant created and saved a second note."
-        if ($variant -eq 'win32') {
+        if ($variant -ne 'winforms') {
             Click-NativeHeader $window 382 # Close button.
         } else {
             [void][PinnySmokeNative]::SendMessageW($window, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
