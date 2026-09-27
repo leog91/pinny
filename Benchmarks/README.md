@@ -4,7 +4,7 @@
 
 [PNG chart](benchmark.png) · [SVG chart](benchmark.svg) · [All 30 measurements](results.csv)
 
-Five Windows x64 implementations were measured on the same PC with one and five synthetic notes. Values below are medians of three sequential runs. Lower is better for memory and startup; each chart panel is sorted from lowest to highest. The active app under `Pinny/` is not measured; these builds live under `Experiments/`.
+Five Windows x64 implementations were measured on the same PC with one and five synthetic notes. Values below are medians of three sequential runs. Lower is better for memory and startup; each chart panel is sorted from lowest to highest. The active Go app under `Pinny.Go/` is not measured; these builds live under `Experiments/`.
 
 | Implementation | Private working set, 1 note | Private working set, 5 notes | First-window startup, 1 note | First-window startup, 5 notes |
 | --- | ---: | ---: | ---: | ---: |
@@ -26,7 +26,7 @@ Rust has the lowest measured private working set. Rust and Go are close on first
 - **Startup:** Elapsed time from process launch until the first visible Pinny note window appeared, polled every 20 ms. This is a warm-cache measurement. For five notes, it does not indicate when all five windows are ready.
 - **Idle CPU:** Process CPU time during the following three seconds is in the CSV. That short window is noisy and cannot establish sustained idle behavior.
 
-The C# and Go builds load synthetic notes from isolated JSON folders. Rust constructs equivalent notes in memory because it has no persistence. This input-path difference matters when interpreting startup. The Win32 UIs are similar but not byte-for-byte identical; WPF and WinForms use different rendering and controls. Note content, themes, display scale, OS state, and other processes can change results. The benchmark measures runtime cost, not whether an implementation is ready to replace the active WPF app.
+The C# and Go builds load synthetic notes from isolated JSON folders. Rust constructs equivalent notes in memory because it has no persistence. This input-path difference matters when interpreting startup. The Win32 UIs are similar but not byte-for-byte identical; WPF and WinForms use different rendering and controls. Note content, themes, display scale, OS state, and other processes can change results. The benchmark measures runtime cost for these frozen builds; it does not measure later changes to the active Go app.
 
 ## Build and rerun
 
