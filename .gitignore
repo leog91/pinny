@@ -1,6 +1,7 @@
 # Build and publish output
 **/bin/
 **/obj/
+**/target/
 dist/
 
 # Local IDE files
@@ -13,4 +14,3 @@ dist/
 # Test output
 TestResults/
 Benchmarks/.data/
-Benchmarks/results.csv
