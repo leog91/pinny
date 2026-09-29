@@ -161,7 +161,8 @@ foreach ($variant in $Variants) {
         [void][PinnySmokeNative]::SendMessageW($edit, 0x000C, [IntPtr]::Zero, "Edited $variant")
         [void][PinnySmokeNative]::MoveWindow($window, 200, 200, 400, 300, $true)
         if ($variant -ne 'winforms') {
-            Click-NativeHeader $window 346 # Pin button in a 400-pixel window.
+            $pinX = if ($variant -eq 'active-go') { 310 } else { 346 }
+            Click-NativeHeader $window $pinX # Pin button in a 400-pixel window.
         } else {
             $button = Find-Child $window 'BUTTON' '◇'
             if ($button -eq [IntPtr]::Zero) { throw 'WinForms pin button not found' }
@@ -177,7 +178,11 @@ foreach ($variant in $Variants) {
         }
         Write-Host "$variant saved text, geometry, and pin state."
         if ($variant -eq 'go' -or $variant -eq 'active-go') {
-            [void][PinnySmokeNative]::SendMessageW($window, 0x0111, [IntPtr]4, [IntPtr]::Zero) # Quit, preserving notes.
+            if ($variant -eq 'active-go') {
+                Click-NativeHeader $window 382 # Red X quits, preserving notes.
+            } else {
+                [void][PinnySmokeNative]::SendMessageW($window, 0x0111, [IntPtr]4, [IntPtr]::Zero) # Quit, preserving notes.
+            }
             if (-not $process.WaitForExit(5000)) { throw "$variant did not quit normally" }
             Write-Host "$variant quit while preserving its note."
         }
@@ -214,7 +219,7 @@ foreach ($variant in $Variants) {
         Write-Host "$variant restored text, geometry, and pin state."
 
         if ($variant -ne 'winforms') {
-            $newX = if ($variant -eq 'active-go') { 310 } else { 266 }
+            $newX = if ($variant -eq 'active-go') { 274 } else { 266 }
             Click-NativeHeader $window $newX # New button in a 400-pixel window.
         } else {
             $button = Find-Child $window 'BUTTON' '+'
@@ -308,7 +313,7 @@ foreach ($variant in $Variants) {
                 if ([DateTime]::UtcNow -gt $limit) { break }
             } until ($trashed.Count -eq 0)
             if ($trashed.Count -ne 0) { throw 'active-go did not permanently delete the selected note' }
-            Click-NativeHeader $restoredWindow 310 # Create another blank note.
+            Click-NativeHeader $restoredWindow 274 # Create another blank note.
             $newWindow = Find-NoteWindow ([uint32]$process.Id) $restoredWindow
             if ($newWindow -eq [IntPtr]::Zero) { throw 'active-go could not create a note for Empty Trash test' }
             [void][PinnySmokeNative]::SendMessageW($newWindow, 0x0111, [IntPtr]3, [IntPtr]::Zero) # Trash the new note.

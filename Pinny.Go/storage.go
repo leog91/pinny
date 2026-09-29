@@ -108,6 +108,11 @@ func saveNoteFile(dir, name string, notes []noteState) error {
 		return err
 	}
 	data = append(data, '\n')
+	return writeAtomic(filepath.Join(dir, name), data)
+}
+
+func writeAtomic(path string, data []byte) error {
+	dir := filepath.Dir(path)
 	temporary, err := os.CreateTemp(dir, "notes-*.tmp")
 	if err != nil {
 		return err
@@ -125,5 +130,5 @@ func saveNoteFile(dir, name string, notes []noteState) error {
 	if err := temporary.Close(); err != nil {
 		return err
 	}
-	return os.Rename(temporaryPath, filepath.Join(dir, name))
+	return os.Rename(temporaryPath, path)
 }

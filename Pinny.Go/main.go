@@ -28,6 +28,9 @@ const (
 	paperID     = 7
 	restoreID   = 8
 	viewTrashID = 10
+	exportID    = 11
+	importID    = 12
+	locationID  = 13
 
 	wmDestroy       = 0x0002
 	wmMove          = 0x0003
@@ -187,12 +190,14 @@ var (
 	strings            = make(map[string]*uint16)
 	font               uintptr
 	dataDir            string
+	dataDirOverridden  bool
 	persistenceEnabled bool
 	saveTimerWindow    uintptr
 	quitting           bool
 	saveErrorShown     bool
 )
 
+//go:uintptrescapes
 func call(p *syscall.LazyProc, args ...uintptr) uintptr {
 	r, _, _ := p.Call(args...)
 	return r
@@ -234,6 +239,11 @@ func topmost(pinned bool) uintptr {
 
 func main() {
 	runtime.LockOSThread()
+	if err := comError(call(coInitialize, 0, 2)); err != nil {
+		showOperationError(0, "Initialize Windows dialogs", err)
+		return
+	}
+	defer call(coUninitialize)
 	count := 0
 	switch {
 	case len(os.Args) == 1:
@@ -255,11 +265,13 @@ func main() {
 	}
 	if persistenceEnabled && dataDir == "" {
 		var err error
-		dataDir, err = defaultDataDir()
+		dataDir, err = savedDataDir()
 		if err != nil {
 			call(messageBox, 0, uintptr(unsafe.Pointer(wide(err.Error()))), uintptr(unsafe.Pointer(wide("Pinny"))), 0x10)
 			return
 		}
+	} else if persistenceEnabled {
+		dataDirOverridden = true
 	}
 	if err := run(count); err != nil {
 		call(messageBox, 0, uintptr(unsafe.Pointer(wide(err.Error()))), uintptr(unsafe.Pointer(wide("Pinny"))), 0x10)
@@ -420,6 +432,10 @@ func showNote(input initialNote) error {
 	call(appendMenu, n.menu, 0, viewTrashID, uintptr(unsafe.Pointer(wide("View Trash..."))))
 	call(appendMenu, n.menu, 0, restoreID, uintptr(unsafe.Pointer(wide("Restore last deleted note"))))
 	call(appendMenu, n.menu, mfSeparator, 0, 0)
+	call(appendMenu, n.menu, 0, exportID, uintptr(unsafe.Pointer(wide("Export notes..."))))
+	call(appendMenu, n.menu, 0, importID, uintptr(unsafe.Pointer(wide("Import notes..."))))
+	call(appendMenu, n.menu, 0, locationID, uintptr(unsafe.Pointer(wide("Choose notes folder..."))))
+	call(appendMenu, n.menu, mfSeparator, 0, 0)
 	call(appendMenu, n.menu, 0, quitID, uintptr(unsafe.Pointer(wide("Quit Pinny (keep notes)"))))
 	initialText := syscall.StringToUTF16(input.text)
 	n.edit = call(createWindow, 0, uintptr(unsafe.Pointer(wide("EDIT"))),
@@ -555,12 +571,17 @@ func buttonAt(hwnd, lp uintptr) int {
 	}
 	var area rect
 	call(getClientRect, hwnd, uintptr(unsafe.Pointer(&area)))
+	if x < 0 || x >= area.right {
+		return 0
+	}
 	switch {
 	case x >= area.right-36:
-		return 3
+		return 4
 	case x >= area.right-72:
-		return 2
+		return 3
 	case x >= area.right-108:
+		return 2
+	case x >= area.right-144:
 		return 1
 	default:
 		return 0
@@ -676,6 +697,12 @@ func wndProc(hwnd, message, wp, lp uintptr) uintptr {
 			showTrashViewer()
 		case id == quitID:
 			quit()
+		case id == exportID:
+			exportNotes(hwnd)
+		case id == importID:
+			importNotes(hwnd)
+		case id == locationID:
+			changeNotesFolder(hwnd)
 		case id == lightID || id == darkID || id == paperID:
 			n.theme = "Light"
 			if id == darkID {
@@ -846,13 +873,15 @@ func clickButton(hwnd uintptr, n *note, button int) {
 	case 3:
 		var area rect
 		call(getClientRect, hwnd, uintptr(unsafe.Pointer(&area)))
-		pt := point{area.right - 36, headerH}
+		pt := point{area.right - 72, headerH}
 		call(clientToScreen, hwnd, uintptr(unsafe.Pointer(&pt)))
 		call(setForeground, hwnd)
 		choice := call(trackPopupMenu, n.menu, tpmReturnCmd, uintptr(pt.x), uintptr(pt.y), 0, hwnd, 0)
 		if choice != 0 {
 			call(sendMessage, hwnd, wmCommand, choice, 0)
 		}
+	case 4:
+		quit()
 	}
 }
 func quit() {
@@ -890,23 +919,27 @@ func paintHeader(hwnd uintptr, n *note) {
 	call(setBkMode, dc, 1)
 	oldFont := call(selectObject, dc, font)
 	defer call(selectObject, dc, oldFont)
-	title := rect{10, 1, bounds.right - 108, headerH - 1}
+	title := rect{10, 1, bounds.right - 144, headerH - 1}
 	if title.right < 10 {
 		title.right = 10
 	}
 	text(dc, "Pinny", title, dtVCenter|dtSingleLine, p.mutedColor)
-	labels := []string{"+", "◇", "⋯"}
+	labels := []string{"+", "◇", "⋯", "×"}
 	if n.pinned {
 		labels[1] = "◆"
 	}
-	widths := []int32{36, 36, 36}
-	left := bounds.right - 108
+	widths := []int32{36, 36, 36, 36}
+	left := bounds.right - 144
 	for i, label := range labels {
 		button := rect{left, 1, left + widths[i], headerH - 1}
 		if n.hovered == i+1 {
 			call(fillRect, dc, uintptr(unsafe.Pointer(&button)), p.hover)
 		}
-		text(dc, label, button, dtCenter|dtVCenter|dtSingleLine, p.inkColor)
+		color := p.inkColor
+		if i == 3 {
+			color = rgb(220, 55, 55)
+		}
+		text(dc, label, button, dtCenter|dtVCenter|dtSingleLine, color)
 		left += widths[i]
 	}
 }

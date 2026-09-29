@@ -13,7 +13,7 @@ On Windows x64, double-click `dist\Pinny.exe` after building it. The executable 
 - Drag a note's header to move it; drag an edge or corner to resize it.
 - Click the diamond to toggle always-on-top for that note.
 - Click **⋯** to choose Light, Dark, or Paper, manage Trash, or quit while keeping all notes.
-- Choose **⋯ → Quit Pinny (keep notes)** (or close any note window from the taskbar) to exit while keeping every note.
+- Click the red **×**, choose **⋯ → Quit Pinny (keep notes)**, or close any note window from the taskbar to exit while keeping every note.
 
 ### Deleting and recovering notes
 
@@ -23,11 +23,19 @@ Pinny saves open notes to `%LOCALAPPDATA%\Pinny\notes.json` and trashed notes to
 
 ### Choose a notes folder
 
-The active Go app can use a different folder for `notes.json`. Set the `PINNY_DATA_DIR` user environment variable to a folder path if you want the choice to apply when double-clicking Pinny, or pass `--data-dir <folder>` for one launch. The command-line option takes precedence. No `.env` file is required or read by the app.
+Choose **⋯ → Choose notes folder...** to pick a folder in the app. Pinny copies all current notes and Trash there, saves future changes there, and remembers the folder for future launches. The original files are kept. To protect another collection, the destination must not already contain `notes.json`, `trash.json`, or the older `note.json`. The choice is stored in `%LOCALAPPDATA%\Pinny\settings.json`.
+
+You can also set the `PINNY_DATA_DIR` user environment variable or pass `--data-dir <folder>` for one launch. The selection order is command-line option, environment variable, remembered folder, then the default `%LOCALAPPDATA%\Pinny`. No `.env` file is required or read by the app.
 
 In PowerShell, `$env:PINNY_DATA_DIR = 'C:\Notes\Pinny'` sets it for the current session. Then run `.\dist\Pinny.exe`.
 
-The app does not move existing notes when you change folders. Close Pinny, copy the existing `notes.json` to the new folder if you want to retain those notes, then launch it with the new setting. Keep only one running app pointed at a notes folder: the current JSON storage does not merge simultaneous edits. The archived builds under `Experiments/` keep their own default folders and ignore `PINNY_DATA_DIR`.
+Changing the environment variable or command-line option does not copy existing notes. Close Pinny and copy `notes.json` and `trash.json` to the new folder if you want to retain them, or use the folder picker in the app. Keep only one running app pointed at a notes folder: the current JSON storage does not merge simultaneous edits. The archived builds under `Experiments/` keep their own default folders and ignore `PINNY_DATA_DIR`.
+
+### Export and import
+
+Choose **⋯ → Export notes...** to save one readable JSON backup containing all open notes and Trash. It preserves each note's text, ID, position, size, pin state, and theme, including current edits. The backup has `Version`, `Notes`, and `Trash` fields.
+
+Choose **⋯ → Import notes...** to add a backup to your current collection. Existing notes and Trash are kept, and conflicting note IDs are replaced with new IDs. The importer also accepts a plain `notes.json` array from earlier versions. Invalid files are rejected before changing the collection. Imported window positions are moved into view if needed on the current computer.
 
 ## Requirements
 
@@ -118,6 +126,15 @@ To check the active Go app's save, Trash, restore, and safe-close behavior using
 
 ```powershell
 .\Benchmarks\Smoke-Persistence.ps1 -Variants active-go
+```
+
+To check native picker cancellation and startup from a remembered folder, then exercise JSON transfers and failure recovery with live note windows and isolated test data:
+
+```powershell
+.\Benchmarks\Smoke-Transfer.ps1
+Push-Location .\Pinny.Go
+go test ./...
+Pop-Location
 ```
 
 The benchmark script uses synthetic notes and updates the single tracked CSV and chart under `Benchmarks/`. Published executables and temporary synthetic folders are ignored by Git. Native AOT was not measured because the required C++ linker is not installed on this machine.
