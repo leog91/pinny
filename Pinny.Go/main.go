@@ -27,7 +27,7 @@ const (
 	darkID      = 6
 	paperID     = 7
 	restoreID   = 8
-	emptyID     = 9
+	viewTrashID = 10
 
 	wmDestroy       = 0x0002
 	wmMove          = 0x0003
@@ -308,6 +308,9 @@ func run(count int) error {
 	if call(registerClass, uintptr(unsafe.Pointer(&wc))) == 0 {
 		return fmt.Errorf("could not register Win32 class")
 	}
+	if err := registerTrashViewerClass(instance, largeIcon, smallIcon); err != nil {
+		return err
+	}
 	palettes["Light"] = makePalette(255, 255, 255, 244, 245, 247, 200, 205, 211, 225, 229, 235, 32, 35, 40, 85, 91, 99)
 	palettes["Dark"] = makePalette(36, 39, 44, 48, 52, 59, 76, 84, 94, 67, 73, 82, 232, 234, 237, 189, 197, 205)
 	palettes["Paper"] = makePalette(255, 248, 230, 235, 218, 183, 198, 177, 133, 222, 201, 161, 62, 51, 39, 107, 88, 59)
@@ -414,8 +417,8 @@ func showNote(input initialNote) error {
 	call(appendMenu, n.menu, 0, paperID, uintptr(unsafe.Pointer(wide("Paper"))))
 	call(appendMenu, n.menu, mfSeparator, 0, 0)
 	call(appendMenu, n.menu, 0, trashID, uintptr(unsafe.Pointer(wide("Move this note to Trash"))))
+	call(appendMenu, n.menu, 0, viewTrashID, uintptr(unsafe.Pointer(wide("View Trash..."))))
 	call(appendMenu, n.menu, 0, restoreID, uintptr(unsafe.Pointer(wide("Restore last deleted note"))))
-	call(appendMenu, n.menu, 0, emptyID, uintptr(unsafe.Pointer(wide("Empty Trash..."))))
 	call(appendMenu, n.menu, mfSeparator, 0, 0)
 	call(appendMenu, n.menu, 0, quitID, uintptr(unsafe.Pointer(wide("Quit Pinny (keep notes)"))))
 	initialText := syscall.StringToUTF16(input.text)
@@ -518,14 +521,14 @@ func resizeEdit(hwnd uintptr, n *note) {
 	}
 	var client rect
 	call(getClientRect, hwnd, uintptr(unsafe.Pointer(&client)))
-	width, height := client.right-2, client.bottom-headerH-16
+	width, height := client.right-2, client.bottom-headerH-10
 	if width < 1 {
 		width = 1
 	}
 	if height < 1 {
 		height = 1
 	}
-	call(moveWindow, n.edit, 1, headerH+8, uintptr(width), uintptr(height), 1)
+	call(moveWindow, n.edit, 1, headerH+2, uintptr(width), uintptr(height), 1)
 	updateScrollbar(n)
 }
 func updateScrollbar(n *note) {
@@ -554,12 +557,10 @@ func buttonAt(hwnd, lp uintptr) int {
 	call(getClientRect, hwnd, uintptr(unsafe.Pointer(&area)))
 	switch {
 	case x >= area.right-36:
-		return 4
-	case x >= area.right-72:
 		return 3
-	case x >= area.right-117:
+	case x >= area.right-72:
 		return 2
-	case x >= area.right-151:
+	case x >= area.right-108:
 		return 1
 	default:
 		return 0
@@ -671,8 +672,8 @@ func wndProc(hwnd, message, wp, lp uintptr) uintptr {
 			moveToTrash(hwnd)
 		case id == restoreID:
 			restoreLastDeleted()
-		case id == emptyID:
-			emptyTrash()
+		case id == viewTrashID:
+			showTrashViewer()
 		case id == quitID:
 			quit()
 		case id == lightID || id == darkID || id == paperID:
@@ -781,6 +782,7 @@ func moveToTrash(hwnd uintptr) {
 		return
 	}
 	trash = updated
+	refreshTrashViewer()
 	stopSaveTimer()
 	if err := saveAllExcept(hwnd); err != nil {
 		showSaveError(err)
@@ -797,19 +799,27 @@ func restoreLastDeleted() {
 		showInfo(0, "Trash is empty.")
 		return
 	}
-	last := trash[len(trash)-1]
+	restoreTrashAt(len(trash) - 1)
+}
+func restoreTrashAt(index int) {
+	if index < 0 || index >= len(trash) {
+		return
+	}
+	selected := trash[index]
+	updated := append(append([]noteState(nil), trash[:index]...), trash[index+1:]...)
 	for _, n := range windows {
-		if n.id == last.ID {
-			if err := saveTrash(dataDir, trash[:len(trash)-1]); err != nil {
+		if n.id == selected.ID {
+			if err := saveTrash(dataDir, updated); err != nil {
 				showSaveError(err)
 				return
 			}
-			trash = trash[:len(trash)-1]
+			trash = updated
+			refreshTrashViewer()
 			showInfo(0, "This note is already open. Its duplicate Trash entry was removed.")
 			return
 		}
 	}
-	if err := showSavedNote(last); err != nil {
+	if err := showSavedNote(selected); err != nil {
 		showSaveError(err)
 		return
 	}
@@ -820,51 +830,29 @@ func restoreLastDeleted() {
 		showSaveError(err)
 		return
 	}
-	if err := saveTrash(dataDir, trash[:len(trash)-1]); err != nil {
+	if err := saveTrash(dataDir, updated); err != nil {
 		showSaveError(err)
 		return
 	}
-	trash = trash[:len(trash)-1]
-}
-func emptyTrash() {
-	if !persistenceEnabled {
-		showInfo(0, "Trash is unavailable in --notes mode.")
-		return
-	}
-	if len(trash) == 0 {
-		showInfo(0, "Trash is empty.")
-		return
-	}
-	answer := call(messageBox, 0,
-		uintptr(unsafe.Pointer(wide("Permanently delete every note in Trash? This cannot be undone."))),
-		uintptr(unsafe.Pointer(wide("Empty Trash"))), 0x134) // Yes/No, warning icon, No by default.
-	if answer != 6 { // IDYES
-		return
-	}
-	if err := saveTrash(dataDir, nil); err != nil {
-		showSaveError(err)
-		return
-	}
-	trash = nil
+	trash = updated
+	refreshTrashViewer()
 }
 func clickButton(hwnd uintptr, n *note, button int) {
 	switch button {
 	case 1:
 		newNote(hwnd, n)
 	case 2:
+		togglePin(hwnd, n)
+	case 3:
 		var area rect
 		call(getClientRect, hwnd, uintptr(unsafe.Pointer(&area)))
-		pt := point{area.right - 117, headerH}
+		pt := point{area.right - 36, headerH}
 		call(clientToScreen, hwnd, uintptr(unsafe.Pointer(&pt)))
 		call(setForeground, hwnd)
 		choice := call(trackPopupMenu, n.menu, tpmReturnCmd, uintptr(pt.x), uintptr(pt.y), 0, hwnd, 0)
 		if choice != 0 {
 			call(sendMessage, hwnd, wmCommand, choice, 0)
 		}
-	case 3:
-		togglePin(hwnd, n)
-	case 4:
-		quit()
 	}
 }
 func quit() {
@@ -898,25 +886,21 @@ func paintHeader(hwnd uintptr, n *note) {
 	call(getClientRect, hwnd, uintptr(unsafe.Pointer(&bounds)))
 	p := palettes[n.theme]
 	call(fillRect, dc, uintptr(unsafe.Pointer(&bounds)), p.surface)
-	header := rect{0, 0, bounds.right, headerH}
-	divider := rect{0, headerH - 1, bounds.right, headerH}
-	call(fillRect, dc, uintptr(unsafe.Pointer(&header)), p.header)
-	call(fillRect, dc, uintptr(unsafe.Pointer(&divider)), p.border)
 	call(frameRect, dc, uintptr(unsafe.Pointer(&bounds)), p.border)
 	call(setBkMode, dc, 1)
 	oldFont := call(selectObject, dc, font)
 	defer call(selectObject, dc, oldFont)
-	title := rect{10, 1, bounds.right - 151, headerH - 1}
+	title := rect{10, 1, bounds.right - 108, headerH - 1}
 	if title.right < 10 {
 		title.right = 10
 	}
 	text(dc, "Pinny", title, dtVCenter|dtSingleLine, p.mutedColor)
-	labels := []string{"+", "Menu", "◇", "Quit"}
+	labels := []string{"+", "◇", "⋯"}
 	if n.pinned {
-		labels[2] = "◆"
+		labels[1] = "◆"
 	}
-	widths := []int32{34, 45, 36, 36}
-	left := bounds.right - 151
+	widths := []int32{36, 36, 36}
+	left := bounds.right - 108
 	for i, label := range labels {
 		button := rect{left, 1, left + widths[i], headerH - 1}
 		if n.hovered == i+1 {

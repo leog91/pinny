@@ -11,13 +11,13 @@ On Windows x64, double-click `dist\Pinny.exe` after building it. The executable 
 - Type directly into any note. Each note has its own text, position, size, pin state, and theme.
 - Click **+** to create another note. New notes open slightly offset from the current one.
 - Drag a note's header to move it; drag an edge or corner to resize it.
-- Click **Menu** to choose Light, Dark, or Paper, move a note to Trash, restore the last deleted note, empty Trash, or quit while keeping all notes.
 - Click the diamond to toggle always-on-top for that note.
-- Click **Quit** (or close any note window from the taskbar) to exit while keeping every note.
+- Click **⋯** to choose Light, Dark, or Paper, manage Trash, or quit while keeping all notes.
+- Choose **⋯ → Quit Pinny (keep notes)** (or close any note window from the taskbar) to exit while keeping every note.
 
 ### Deleting and recovering notes
 
-Choose **Menu → Move this note to Trash** to remove one note. Pinny saves that note to `trash.json` before removing it from `notes.json`; it stays recoverable across restarts. If it was the last open note, Pinny exits and opens a blank note on the next launch. Choose **Menu → Restore last deleted note** to bring back the most recently trashed note. Repeat to restore older notes. **Menu → Empty Trash...** permanently deletes all trashed notes only after you confirm. Trash is never emptied automatically.
+Choose **⋯ → Move this note to Trash** to remove one note. Pinny saves that note to `trash.json` before removing it from `notes.json`; it stays recoverable across restarts. If it was the last open note, Pinny exits and opens a blank note on the next launch. Choose **⋯ → View Trash...** to browse deleted notes, read their contents, restore a selected note, permanently delete one note, or empty all of Trash. The list shows the newest deletion first. Both permanent deletion actions ask for confirmation. **⋯ → Restore last deleted note** remains a shortcut for the newest note. Trash is never emptied automatically.
 
 Pinny saves open notes to `%LOCALAPPDATA%\Pinny\notes.json` and trashed notes to `%LOCALAPPDATA%\Pinny\trash.json`. Changes save 500 ms after the last edit, move, resize, pin toggle, or theme change, and again when quitting. The Go app reads notes saved by the earlier WPF version in the same folder. When upgrading from the single-note version, Pinny loads the old `%LOCALAPPDATA%\Pinny\note.json` if `notes.json` does not exist. The old file is left in place as a backup. If a saved position is off-screen after a monitor change, Pinny moves that window back into view.
 

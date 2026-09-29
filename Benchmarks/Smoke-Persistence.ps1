@@ -77,15 +77,55 @@ function Find-ProcessDialog([uint32]$processId) {
     return $script:foundDialog
 }
 
-function Answer-EmptyTrash([IntPtr]$window, [uint32]$processId, [int]$answer) {
-    if (-not [PinnySmokeNative]::PostMessageW($window, 0x0111, [IntPtr]9, [IntPtr]::Zero)) {
-        throw 'Could not open Empty Trash confirmation'
+function Find-TrashViewer([uint32]$processId) {
+    $script:foundTrashViewer = [IntPtr]::Zero
+    $callback = [PinnySmokeNative+TopCallback]{
+        param($window, $parameter)
+        [uint32]$ownerProcess = 0
+        [void][PinnySmokeNative]::GetWindowThreadProcessId($window, [ref]$ownerProcess)
+        if ($ownerProcess -eq $processId) {
+            $name = [System.Text.StringBuilder]::new(256)
+            [void][PinnySmokeNative]::GetClassNameW($window, $name, $name.Capacity)
+            if ($name.ToString() -eq 'PinnyTrashViewerGo') {
+                $script:foundTrashViewer = $window
+                return $false
+            }
+        }
+        return $true
+    }
+    [void][PinnySmokeNative]::EnumWindows($callback, [IntPtr]::Zero)
+    return $script:foundTrashViewer
+}
+
+function Find-NoteWindow([uint32]$processId, [IntPtr]$excluded = [IntPtr]::Zero) {
+    $script:foundNoteWindow = [IntPtr]::Zero
+    $callback = [PinnySmokeNative+TopCallback]{
+        param($window, $parameter)
+        [uint32]$ownerProcess = 0
+        [void][PinnySmokeNative]::GetWindowThreadProcessId($window, [ref]$ownerProcess)
+        if ($ownerProcess -eq $processId -and $window -ne $excluded) {
+            $name = [System.Text.StringBuilder]::new(256)
+            [void][PinnySmokeNative]::GetClassNameW($window, $name, $name.Capacity)
+            if ($name.ToString() -eq 'PinnyNativeNoteGo') {
+                $script:foundNoteWindow = $window
+                return $false
+            }
+        }
+        return $true
+    }
+    [void][PinnySmokeNative]::EnumWindows($callback, [IntPtr]::Zero)
+    return $script:foundNoteWindow
+}
+
+function Answer-TrashAction([IntPtr]$viewer, [uint32]$processId, [int]$command, [int]$answer) {
+    if (-not [PinnySmokeNative]::PostMessageW($viewer, 0x0111, [IntPtr]$command, [IntPtr]::Zero)) {
+        throw 'Could not open Trash confirmation'
     }
     $limit = [DateTime]::UtcNow.AddSeconds(5)
     do {
         Start-Sleep -Milliseconds 25
         $dialog = Find-ProcessDialog $processId
-        if ([DateTime]::UtcNow -gt $limit) { throw 'Empty Trash confirmation did not appear' }
+        if ([DateTime]::UtcNow -gt $limit) { throw 'Trash confirmation did not appear' }
     } until ($dialog -ne [IntPtr]::Zero)
     [void][PinnySmokeNative]::SendMessageW($dialog, 0x0111, [IntPtr]$answer, [IntPtr]::Zero)
 }
@@ -174,7 +214,8 @@ foreach ($variant in $Variants) {
         Write-Host "$variant restored text, geometry, and pin state."
 
         if ($variant -ne 'winforms') {
-            Click-NativeHeader $window 266 # New button.
+            $newX = if ($variant -eq 'active-go') { 310 } else { 266 }
+            Click-NativeHeader $window $newX # New button in a 400-pixel window.
         } else {
             $button = Find-Child $window 'BUTTON' '+'
             if ($button -eq [IntPtr]::Zero) { throw 'WinForms new-note button not found' }
@@ -216,20 +257,67 @@ foreach ($variant in $Variants) {
                 if ([DateTime]::UtcNow -gt $limit) { throw 'active-go persistent Trash restore timeout' }
             } until ($process.MainWindowHandle -ne 0)
             $remainingWindow = $process.MainWindowHandle
-            [void][PinnySmokeNative]::SendMessageW($remainingWindow, 0x0111, [IntPtr]8, [IntPtr]::Zero) # Restore.
+            [void][PinnySmokeNative]::SendMessageW($remainingWindow, 0x0111, [IntPtr]10, [IntPtr]::Zero) # View Trash.
+            $limit = [DateTime]::UtcNow.AddSeconds(5)
+            do {
+                Start-Sleep -Milliseconds 25
+                $viewer = Find-TrashViewer ([uint32]$process.Id)
+                if ([DateTime]::UtcNow -gt $limit) { throw 'active-go Trash viewer did not appear' }
+            } until ($viewer -ne [IntPtr]::Zero)
+            $list = Find-Child $viewer 'LISTBOX'
+            $preview = Find-Child $viewer 'EDIT'
+            if ($list -eq [IntPtr]::Zero -or $preview -eq [IntPtr]::Zero) {
+                throw 'active-go Trash viewer controls were not created'
+            }
+            $count = [PinnySmokeNative]::SendMessageW($list, 0x018B, [IntPtr]::Zero, [IntPtr]::Zero).ToInt32()
+            $previewText = [System.Text.StringBuilder]::new(256)
+            [void][PinnySmokeNative]::SendMessageW($preview, 0x000D, [IntPtr]$previewText.Capacity, $previewText)
+            if ($count -ne 1 -or $previewText.ToString() -ne "Edited $variant") {
+                throw "active-go Trash viewer did not display the deleted note (count=$count, preview='$($previewText.ToString())')"
+            }
+            [void][PinnySmokeNative]::SendMessageW($viewer, 0x0111, [IntPtr]202, [IntPtr]::Zero) # Restore selected.
             $saved = @(Get-Content (Join-Path $data 'notes.json') -Raw | ConvertFrom-Json)
             $trashed = @(Get-Content (Join-Path $data 'trash.json') -Raw | ConvertFrom-Json)
             if ($saved.Count -ne 2 -or $trashed.Count -ne 0 -or
                 @($saved | Where-Object Text -eq "Edited $variant").Count -ne 1) {
-                throw 'active-go did not restore the note from Trash'
+                throw 'active-go did not restore the selected note from Trash'
             }
+            [void][PinnySmokeNative]::SendMessageW($viewer, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
             [void][PinnySmokeNative]::SendMessageW($remainingWindow, 0x0111, [IntPtr]3, [IntPtr]::Zero) # Trash blank note.
             $process.Refresh()
-            $restoredWindow = $process.MainWindowHandle
-            Answer-EmptyTrash $restoredWindow ([uint32]$process.Id) 7 # No.
+            $restoredWindow = Find-NoteWindow ([uint32]$process.Id)
+            $trashed = @(Get-Content (Join-Path $data 'trash.json') -Raw | ConvertFrom-Json)
+            if ($restoredWindow -eq [IntPtr]::Zero -or $trashed.Count -ne 1) {
+                throw "active-go could not prepare permanent deletion test (count=$($trashed.Count))"
+            }
+            [void][PinnySmokeNative]::SendMessageW($restoredWindow, 0x0111, [IntPtr]10, [IntPtr]::Zero) # View Trash.
+            $viewer = Find-TrashViewer ([uint32]$process.Id)
+            if ($viewer -eq [IntPtr]::Zero -or
+                (Find-Child $viewer 'BUTTON' 'Delete note...') -eq [IntPtr]::Zero -or
+                (Find-Child $viewer 'BUTTON' 'Empty Trash...') -eq [IntPtr]::Zero) {
+                throw 'active-go permanent deletion actions are missing from Trash'
+            }
+            Answer-TrashAction $viewer ([uint32]$process.Id) 204 7 # Cancel Delete note.
+            $trashed = @(Get-Content (Join-Path $data 'trash.json') -Raw | ConvertFrom-Json)
+            if ($trashed.Count -ne 1) { throw 'active-go deleted a note despite cancellation' }
+            Answer-TrashAction $viewer ([uint32]$process.Id) 204 6 # Confirm Delete note.
+            $limit = [DateTime]::UtcNow.AddSeconds(5)
+            do {
+                Start-Sleep -Milliseconds 25
+                $trashed = @(Get-Content (Join-Path $data 'trash.json') -Raw | ConvertFrom-Json)
+                if ([DateTime]::UtcNow -gt $limit) { break }
+            } until ($trashed.Count -eq 0)
+            if ($trashed.Count -ne 0) { throw 'active-go did not permanently delete the selected note' }
+            Click-NativeHeader $restoredWindow 310 # Create another blank note.
+            $newWindow = Find-NoteWindow ([uint32]$process.Id) $restoredWindow
+            if ($newWindow -eq [IntPtr]::Zero) { throw 'active-go could not create a note for Empty Trash test' }
+            [void][PinnySmokeNative]::SendMessageW($newWindow, 0x0111, [IntPtr]3, [IntPtr]::Zero) # Trash the new note.
+            $trashed = @(Get-Content (Join-Path $data 'trash.json') -Raw | ConvertFrom-Json)
+            if ($trashed.Count -ne 1) { throw 'active-go could not prepare Empty Trash test' }
+            Answer-TrashAction $viewer ([uint32]$process.Id) 205 7 # Cancel Empty Trash.
             $trashed = @(Get-Content (Join-Path $data 'trash.json') -Raw | ConvertFrom-Json)
             if ($trashed.Count -ne 1) { throw 'active-go emptied Trash despite cancellation' }
-            Answer-EmptyTrash $restoredWindow ([uint32]$process.Id) 6 # Yes.
+            Answer-TrashAction $viewer ([uint32]$process.Id) 205 6 # Confirm Empty Trash.
             $limit = [DateTime]::UtcNow.AddSeconds(5)
             do {
                 Start-Sleep -Milliseconds 25
@@ -237,13 +325,14 @@ foreach ($variant in $Variants) {
                 if ([DateTime]::UtcNow -gt $limit) { break }
             } until ($trashed.Count -eq 0)
             if ($trashed.Count -ne 0) { throw 'active-go did not permanently empty Trash after confirmation' }
+            [void][PinnySmokeNative]::SendMessageW($viewer, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
             [void][PinnySmokeNative]::SendMessageW($restoredWindow, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) # Quit via window close.
             if (-not $process.WaitForExit(5000)) { throw 'active-go did not quit via window close' }
             $saved = @(Get-Content (Join-Path $data 'notes.json') -Raw | ConvertFrom-Json)
             if ($saved.Count -ne 1 -or $saved[0].Text -ne "Edited $variant") {
                 throw 'active-go window close did not keep the restored note'
             }
-            Write-Host 'active-go restored a note, confirmed Empty Trash, and quit while retaining the restored note.'
+            Write-Host 'active-go restored a note, confirmed both permanent deletion actions, and quit while retaining the restored note.'
         } else {
             Write-Host "$variant deleted one note and kept the other open."
         }
