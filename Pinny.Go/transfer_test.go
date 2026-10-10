@@ -52,6 +52,30 @@ func TestTransfersWithLiveNotes(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := windowOrder[0]
+	firstNote := windows[first]
+	call(sendMessage, first, wmCommand, renameID, 0)
+	if !firstNote.renameActive {
+		t.Fatal("rename menu did not open title editor")
+	}
+	call(setWindowText, firstNote.titleEdit, uintptr(unsafe.Pointer(wide("Games & travel"))))
+	if !handleEditorMessage(msg{hwnd: firstNote.titleEdit, message: 0x0100, wParam: 13}) || firstNote.title != "Games & travel" {
+		t.Fatal("Enter did not commit title")
+	}
+	if got := editorText(first); got != "Games & travel — Pinny" {
+		t.Fatalf("window title: %q", got)
+	}
+	beginRename(first, firstNote)
+	call(setWindowText, firstNote.titleEdit, uintptr(unsafe.Pointer(wide("Cancelled"))))
+	handleEditorMessage(msg{hwnd: firstNote.titleEdit, message: 0x0100, wParam: 27})
+	if firstNote.title != "Games & travel" {
+		t.Fatal("Escape changed title")
+	}
+	beginRename(first, firstNote)
+	call(setWindowText, firstNote.titleEdit, uintptr(unsafe.Pointer(wide("Games & travel"))))
+	call(setFocus, firstNote.edit)
+	if firstNote.renameActive {
+		t.Fatal("leaving title editor did not commit")
+	}
 	// Export must read live text, rather than a possibly stale notes.json.
 	call(setWindowText, windows[first].edit, uintptr(unsafe.Pointer(wide("Unsaved export edit"))))
 	path := filepath.Join(t.TempDir(), "backup.json")
@@ -61,6 +85,9 @@ func TestTransfersWithLiveNotes(t *testing.T) {
 	}
 	if len(exported.Notes) != 2 || exported.Notes[0].Text != "Unsaved export edit" || len(exported.Trash) != 1 {
 		t.Fatalf("export missed live state: %+v", exported)
+	}
+	if exported.Notes[0].Title != "Games & travel" {
+		t.Fatal("export missed note title")
 	}
 	if _, err := exportNotesToFile(filepath.Join(dataDir, "notes.json")); err == nil {
 		t.Fatal("export accepted an active data file")
@@ -78,6 +105,9 @@ func TestTransfersWithLiveNotes(t *testing.T) {
 	saved, err := loadNotes(dataDir)
 	if err != nil || len(saved) != 4 {
 		t.Fatalf("import was not persisted: %v", err)
+	}
+	if saved[0].Title != "Games & travel" || saved[2].Title != "Games & travel" {
+		t.Fatal("titles did not survive import and save")
 	}
 	used := make(map[string]bool)
 	for _, group := range [][]noteState{saved, trash} {

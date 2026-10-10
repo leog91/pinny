@@ -31,6 +31,8 @@ const (
 	exportID    = 11
 	importID    = 12
 	locationID  = 13
+	renameID    = 14
+	titleID     = 101
 
 	wmDestroy       = 0x0002
 	wmMove          = 0x0003
@@ -115,6 +117,10 @@ type palette struct {
 }
 type note struct {
 	edit, menu       uintptr
+	titleEdit        uintptr
+	title            string
+	renameActive     bool
+	linkHint         linkHint
 	id               string
 	theme            string
 	pinned           bool
@@ -125,7 +131,7 @@ type note struct {
 type initialNote struct {
 	x, y, width, height int32
 	id                  string
-	text, theme         string
+	text, theme, title  string
 	pinned              bool
 }
 
@@ -394,7 +400,7 @@ func showSavedNote(state noteState) error {
 	}
 	return showNote(initialNote{
 		id: state.ID, x: x, y: y, width: width, height: height,
-		text: state.Text, theme: theme, pinned: state.IsPinned,
+		text: state.Text, theme: theme, title: state.Title, pinned: state.IsPinned,
 	})
 }
 func showNote(input initialNote) error {
@@ -425,10 +431,13 @@ func showNote(input initialNote) error {
 	if hwnd == 0 {
 		return fmt.Errorf("could not create note window")
 	}
-	n := &note{id: input.id, theme: input.theme, pinned: input.pinned, loading: true}
+	n := &note{id: input.id, theme: input.theme, title: cleanTitle(input.title), pinned: input.pinned, loading: true}
 	windows[hwnd] = n
+	updateWindowTitle(hwnd, n)
 	windowOrder = append(windowOrder, hwnd)
 	n.menu = call(createPopupMenu)
+	call(appendMenu, n.menu, 0, renameID, uintptr(unsafe.Pointer(wide("Rename note..."))))
+	call(appendMenu, n.menu, mfSeparator, 0, 0)
 	call(appendMenu, n.menu, 0, lightID, uintptr(unsafe.Pointer(wide("Light"))))
 	call(appendMenu, n.menu, 0, darkID, uintptr(unsafe.Pointer(wide("Dark"))))
 	call(appendMenu, n.menu, 0, paperID, uintptr(unsafe.Pointer(wide("Paper"))))
@@ -454,6 +463,18 @@ func showNote(input initialNote) error {
 	call(sendMessage, n.edit, emLimitText, 0x7fffffff, 0)
 	call(sendMessage, n.edit, wmSetFont, font, 1)
 	call(sendMessage, n.edit, emSetMargins, 3, 10|(10<<16))
+	if err := installLinkCues(hwnd, n); err != nil {
+		call(destroyWindow, hwnd)
+		return err
+	}
+	n.titleEdit = call(createWindow, 0, uintptr(unsafe.Pointer(wide("EDIT"))), 0,
+		wsChild|0x0080, 10, 6, uintptr(width-154), 22, hwnd, titleID, 0, 0) // ES_AUTOHSCROLL
+	if n.titleEdit == 0 {
+		call(destroyWindow, hwnd)
+		return fmt.Errorf("could not create title editor")
+	}
+	call(sendMessage, n.titleEdit, wmSetFont, font, 1)
+	call(sendMessage, n.titleEdit, emLimitText, 100, 0)
 	resizeEdit(hwnd, n)
 	call(showScrollBar, n.edit, 1, 0)
 	updateScrollbar(n)
@@ -484,7 +505,7 @@ func snapshotNotes(exclude uintptr) ([]noteState, error) {
 		buffer := make([]uint16, length+1)
 		call(getWindowText, n.edit, uintptr(unsafe.Pointer(&buffer[0])), uintptr(len(buffer)))
 		notes = append(notes, noteState{
-			ID: n.id, Text: syscall.UTF16ToString(buffer),
+			ID: n.id, Text: syscall.UTF16ToString(buffer), Title: currentTitle(n),
 			Left: float64(bounds.left), Top: float64(bounds.top),
 			Width: float64(bounds.right - bounds.left), Height: float64(bounds.bottom - bounds.top),
 			IsPinned: n.pinned, Theme: n.theme,
@@ -550,6 +571,9 @@ func resizeEdit(hwnd uintptr, n *note) {
 		height = 1
 	}
 	call(moveWindow, n.edit, 1, headerH+2, uintptr(width), uintptr(height), 1)
+	if n.titleEdit != 0 {
+		call(moveWindow, n.titleEdit, 10, 6, uintptr(clamp(client.right-154, 1, 10000)), 22, 1)
+	}
 	updateScrollbar(n)
 }
 func updateScrollbar(n *note) {
@@ -693,7 +717,13 @@ func wndProc(hwnd, message, wp, lp uintptr) uintptr {
 	case wmCommand:
 		id, notification := wp&0xffff, (wp>>16)&0xffff
 		switch {
+		case id == titleID && notification == 0x200: // EN_KILLFOCUS
+			finishRename(hwnd, n, true)
+		case id == renameID:
+			beginRename(hwnd, n)
 		case id == editID && notification == 0x300:
+			hideLinkHint(n)
+			call(invalidateRect, n.edit, 0, 0)
 			updateScrollbar(n)
 			queueSave(hwnd)
 		case id == newID:
@@ -743,6 +773,9 @@ func wndProc(hwnd, message, wp, lp uintptr) uintptr {
 		quit()
 		return 0
 	case wmDestroy:
+		if n.linkHint.tooltip != 0 {
+			call(destroyWindow, n.linkHint.tooltip)
+		}
 		if saveTimerWindow == hwnd {
 			stopSaveTimer()
 		}
@@ -934,7 +967,7 @@ func paintHeader(hwnd uintptr, n *note) {
 	if title.right < 10 {
 		title.right = 10
 	}
-	text(dc, "Pinny", title, dtVCenter|dtSingleLine, p.mutedColor)
+	text(dc, displayTitle(n.title), title, dtVCenter|dtSingleLine|0x8000|0x0800, p.mutedColor) // ellipsis, literal ampersands
 	labels := []string{"+", "◇", "⋯", "×"}
 	if n.pinned {
 		labels[1] = "◆"

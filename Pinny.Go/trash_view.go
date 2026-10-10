@@ -193,7 +193,10 @@ func layoutTrashViewer(hwnd uintptr) {
 }
 
 func trashLabel(state noteState) string {
-	first := stdstrings.TrimSpace(stdstrings.SplitN(stdstrings.ReplaceAll(state.Text, "\r", ""), "\n", 2)[0])
+	first := cleanTitle(state.Title)
+	if first == "" {
+		first = stdstrings.TrimSpace(stdstrings.SplitN(stdstrings.ReplaceAll(state.Text, "\r", ""), "\n", 2)[0])
+	}
 	if first == "" {
 		first = "(empty note)"
 	}

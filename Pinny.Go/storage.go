@@ -16,6 +16,7 @@ import (
 type noteState struct {
 	ID       string  `json:"Id"`
 	Text     string  `json:"Text"`
+	Title    string  `json:"Title,omitempty"`
 	Left     float64 `json:"Left"`
 	Top      float64 `json:"Top"`
 	Width    float64 `json:"Width"`

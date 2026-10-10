@@ -92,7 +92,7 @@ func decodeImportedNotes(data []byte) ([]noteState, error) {
 		return nil, err
 	}
 	for i, n := range notes {
-		if stdstrings.ContainsRune(n.Text, 0) || stdstrings.ContainsRune(n.ID, 0) {
+		if stdstrings.ContainsRune(n.Text, 0) || stdstrings.ContainsRune(n.ID, 0) || stdstrings.ContainsRune(n.Title, 0) {
 			return nil, fmt.Errorf("note %d contains a null character", i+1)
 		}
 		if n.Width < 0 || n.Height < 0 {

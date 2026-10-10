@@ -9,6 +9,9 @@ Pinny is a small Windows desktop notes app built with Go and direct Win32 calls.
 On Windows x64, double-click `dist\Pinny.exe` after building it. The executable does not require a separate Go or .NET installation.
 
 - Type directly into any note. Each note has its own text, position, size, pin state, and theme.
+- Hold **Ctrl** and click an `http://`, `https://`, or `www.` link to open it in your default browser. Normal clicks still edit text.
+- Links have a subtle underline. Hover for a “Ctrl+click to open link” hint; hold Ctrl over the link to see a hand cursor.
+- Choose **⋯ → Rename note...** to replace the header's “Pinny” with your own title. Press **Enter** to save or **Escape** to cancel; an empty title restores “Pinny”. Titles also appear in the taskbar and are kept in saved notes, Trash, and backups.
 - Click **+** to create another note. New notes open slightly offset from the current one.
 - Drag a note's header to move it; drag an edge or corner to resize it.
 - Click the diamond to toggle always-on-top for that note.

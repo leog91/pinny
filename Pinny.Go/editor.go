@@ -15,6 +15,25 @@ const (
 )
 
 func handleEditorMessage(message msg) bool {
+	for hwnd, n := range windows {
+		if message.hwnd == n.edit && (message.message == 0x0100 || message.message == 0x0101) && message.wParam == 0x11 {
+			refreshLinkCursor(n.edit)
+		}
+		if n.renameActive && message.hwnd == n.titleEdit && message.message == 0x0100 && (message.wParam == 13 || message.wParam == 27) {
+			finishRename(hwnd, n, message.wParam == 13)
+			call(setFocus, n.edit)
+			return true
+		}
+		if message.hwnd == n.edit && message.message == wmLButtonDown && call(getKeyState, 0x11)&0x8000 != 0 {
+			if link := editorLinkAt(n.edit, message.lParam); link != "" {
+				hideLinkHint(n)
+				if call(shellExecute, hwnd, uintptr(unsafe.Pointer(wide("open"))), uintptr(unsafe.Pointer(wide(link))), 0, 0, 1) <= 32 {
+					showInfo(hwnd, "Could not open this link in your browser.")
+				}
+				return true
+			}
+		}
+	}
 	// TranslateMessage produces DEL for Ctrl+Backspace. The standard EDIT
 	// control does not implement word deletion for this character.
 	if message.message != wmChar || message.wParam != 0x7f {
