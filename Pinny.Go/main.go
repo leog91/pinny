@@ -42,6 +42,8 @@ const (
 	wmSetFont       = 0x0030
 	wmNcCalcSize    = 0x0083
 	wmNcHitTest     = 0x0084
+	wmNcPaint       = 0x0085
+	wmNcActivate    = 0x0086
 	wmNcLButtonDown = 0x00A1
 	wmCommand       = 0x0111
 	wmTimer         = 0x0113
@@ -363,6 +365,9 @@ func run(count int) error {
 	}
 	var message msg
 	for int32(call(getMessage, uintptr(unsafe.Pointer(&message)), 0, 0, 0)) > 0 {
+		if handleEditorMessage(message) {
+			continue
+		}
 		call(translateMessage, uintptr(unsafe.Pointer(&message)))
 		call(dispatchMessage, uintptr(unsafe.Pointer(&message)))
 	}
@@ -447,8 +452,8 @@ func showNote(input initialNote) error {
 		return fmt.Errorf("could not create note editor")
 	}
 	call(sendMessage, n.edit, emLimitText, 0x7fffffff, 0)
-	call(sendMessage, n.edit, emSetMargins, 3, 10|(10<<16))
 	call(sendMessage, n.edit, wmSetFont, font, 1)
+	call(sendMessage, n.edit, emSetMargins, 3, 10|(10<<16))
 	resizeEdit(hwnd, n)
 	call(showScrollBar, n.edit, 1, 0)
 	updateScrollbar(n)
@@ -588,8 +593,14 @@ func buttonAt(hwnd, lp uintptr) int {
 	}
 }
 func wndProc(hwnd, message, wp, lp uintptr) uintptr {
-	if message == wmNcCalcSize {
+	switch message {
+	case wmNcCalcSize, wmNcPaint:
+		// The client area and paintHeader own the entire frame. Native frame
+		// painting would cover the editor when the window gains or loses focus.
 		return 0
+	case wmNcActivate:
+		// Preserve default activation handling without repainting the frame.
+		return call(defWindowProc, hwnd, message, wp, ^uintptr(0))
 	}
 	n := windows[hwnd]
 	if n == nil {
