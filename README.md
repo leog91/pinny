@@ -15,7 +15,8 @@ On Windows x64, double-click `dist\Pinny.exe` after building it. The executable 
 - Click **+** to create another note. New notes open slightly offset from the current one.
 - Drag a note's header to move it; drag an edge or corner to resize it.
 - Click the diamond to toggle always-on-top for that note.
-- Click **⋯** to choose Light, Dark, or Paper, manage Trash, or quit while keeping all notes.
+- Choose **⋯ → Note color** for Light, Dark, Paper, Soft yellow, Peach, Rose, Mint, or Lavender. A checkmark shows the current color; each note remembers its own selection.
+- Click **⋯** to manage Trash, import or export notes, choose a notes folder, or quit while keeping all notes.
 - Click the red **×**, choose **⋯ → Quit Pinny (keep notes)**, or close any note window from the taskbar to exit while keeping every note.
 
 ### Deleting and recovering notes

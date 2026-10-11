@@ -33,6 +33,11 @@ const (
 	locationID  = 13
 	renameID    = 14
 	titleID     = 101
+	yellowID    = 15
+	peachID     = 16
+	roseID      = 17
+	mintID      = 18
+	lavenderID  = 19
 
 	wmDestroy       = 0x0002
 	wmMove          = 0x0003
@@ -71,6 +76,8 @@ const (
 	esWantReturn  = 0x1000
 
 	mfSeparator   = 0x0800
+	mfPopup       = 0x0010
+	mfChecked     = 0x0008
 	tpmReturnCmd  = 0x0100
 	dtCenter      = 0x0001
 	dtVCenter     = 0x0004
@@ -117,6 +124,7 @@ type palette struct {
 }
 type note struct {
 	edit, menu       uintptr
+	colorMenu        uintptr
 	titleEdit        uintptr
 	title            string
 	renameActive     bool
@@ -167,6 +175,7 @@ var (
 	drawText            = user32.NewProc("DrawTextW")
 	createPopupMenu     = user32.NewProc("CreatePopupMenu")
 	appendMenu          = user32.NewProc("AppendMenuW")
+	checkMenuItem       = user32.NewProc("CheckMenuItem")
 	destroyMenu         = user32.NewProc("DestroyMenu")
 	trackPopupMenu      = user32.NewProc("TrackPopupMenu")
 	trackMouse          = user32.NewProc("TrackMouseEvent")
@@ -334,6 +343,11 @@ func run(count int) error {
 	palettes["Light"] = makePalette(255, 255, 255, 244, 245, 247, 200, 205, 211, 225, 229, 235, 32, 35, 40, 85, 91, 99)
 	palettes["Dark"] = makePalette(36, 39, 44, 48, 52, 59, 76, 84, 94, 67, 73, 82, 232, 234, 237, 189, 197, 205)
 	palettes["Paper"] = makePalette(255, 248, 230, 235, 218, 183, 198, 177, 133, 222, 201, 161, 62, 51, 39, 107, 88, 59)
+	palettes["Soft yellow"] = makePalette(255, 249, 196, 245, 232, 153, 203, 184, 104, 237, 220, 131, 60, 51, 25, 106, 91, 48)
+	palettes["Peach"] = makePalette(255, 233, 214, 246, 212, 185, 204, 162, 133, 237, 199, 168, 65, 43, 30, 112, 78, 55)
+	palettes["Rose"] = makePalette(253, 230, 236, 243, 207, 219, 199, 153, 171, 232, 191, 206, 65, 35, 47, 112, 72, 88)
+	palettes["Mint"] = makePalette(226, 246, 233, 199, 229, 210, 146, 183, 160, 182, 215, 195, 30, 55, 39, 65, 99, 77)
+	palettes["Lavender"] = makePalette(239, 232, 253, 218, 207, 240, 171, 156, 200, 204, 191, 230, 45, 35, 64, 86, 73, 111)
 	font = call(createFont, uintptr(uint32(0xfffffff0)), 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 5, 0, uintptr(unsafe.Pointer(wide("Segoe UI"))))
 	defer func() {
 		for _, p := range palettes {
@@ -381,7 +395,7 @@ func run(count int) error {
 }
 func showSavedNote(state noteState) error {
 	theme := state.Theme
-	if theme != "Dark" && theme != "Paper" {
+	if _, ok := palettes[theme]; !ok {
 		theme = "Light"
 	}
 	width, height := int32(state.Width), int32(state.Height)
@@ -438,9 +452,12 @@ func showNote(input initialNote) error {
 	n.menu = call(createPopupMenu)
 	call(appendMenu, n.menu, 0, renameID, uintptr(unsafe.Pointer(wide("Rename note..."))))
 	call(appendMenu, n.menu, mfSeparator, 0, 0)
-	call(appendMenu, n.menu, 0, lightID, uintptr(unsafe.Pointer(wide("Light"))))
-	call(appendMenu, n.menu, 0, darkID, uintptr(unsafe.Pointer(wide("Dark"))))
-	call(appendMenu, n.menu, 0, paperID, uintptr(unsafe.Pointer(wide("Paper"))))
+	n.colorMenu = call(createPopupMenu)
+	for _, option := range noteColors {
+		call(appendMenu, n.colorMenu, 0, option.id, uintptr(unsafe.Pointer(wide(option.name))))
+	}
+	call(appendMenu, n.menu, mfPopup, n.colorMenu, uintptr(unsafe.Pointer(wide("Note color"))))
+	updateColorMenu(n)
 	call(appendMenu, n.menu, mfSeparator, 0, 0)
 	call(appendMenu, n.menu, 0, trashID, uintptr(unsafe.Pointer(wide("Move this note to Trash"))))
 	call(appendMenu, n.menu, 0, viewTrashID, uintptr(unsafe.Pointer(wide("View Trash..."))))
@@ -744,12 +761,11 @@ func wndProc(hwnd, message, wp, lp uintptr) uintptr {
 			importNotes(hwnd)
 		case id == locationID:
 			changeNotesFolder(hwnd)
-		case id == lightID || id == darkID || id == paperID:
-			n.theme = "Light"
-			if id == darkID {
-				n.theme = "Dark"
-			} else if id == paperID {
-				n.theme = "Paper"
+		case colorName(id) != "":
+			n.theme = colorName(id)
+			updateColorMenu(n)
+			if n.renameActive {
+				call(invalidateRect, n.titleEdit, 0, 1)
 			}
 			call(invalidateRect, n.edit, 0, 1)
 			call(invalidateRect, hwnd, 0, 0)
