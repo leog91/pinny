@@ -133,8 +133,8 @@ validation, identity and todo text), and independent Worker/D1/browser retry-log
 tests. Windows additionally tests real Win32 editors and HTTP: startup, responsive
 editing during requests, overlap, failed saves/retry, persisted automatic toggle,
 manual path, receipts and folder changes. Cross-compilation alone is **not**
-runtime verification. CI runs both platforms; interactive picker/mobile-layout
-checks are additional smoke checks.
+runtime verification. Run checks locally on both platforms; interactive
+picker/mobile-layout checks are additional smoke checks.
 
 PWA, native mobile apps, bots, persistent connections, PC webhooks, uploading
 existing local notes, two-way editing, deletion sync and conflict merging remain

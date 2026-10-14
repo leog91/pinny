@@ -53,7 +53,7 @@ to run it if needed. Run against an isolated `--data-dir` when checking changes
 that affect saved notes.
 
 On a machine without Windows, compilation is still possible, but native GUI and
-desktop test verification must happen on a Windows machine or Windows CI runner.
+desktop test verification must happen on a Windows machine.
 
 ## Windows verification and release packaging
 
@@ -66,9 +66,10 @@ go -C Pinny.Go test ./...
 
 The release script embeds the icon using Windows resource APIs. Existing
 interactive smoke checks remain available under `Benchmarks/`; see the README
-for their commands. CI executes desktop tests and the release build on Windows,
-and separately cross-compiles the executable and tests on Linux. Compiling tests
-on Linux is not equivalent to executing them.
+for their commands. Run desktop tests and the release build locally on Windows,
+and cross-compile the executable on Linux as needed. Compiling tests on Linux is
+not equivalent to executing them. GitHub Actions workflows are intentionally
+disabled to avoid using GitHub compute.
 
 You can invoke Windows release packaging from WSL without moving Git operations
 to Windows. From the repository root in the Windows-mounted checkout:
@@ -103,7 +104,8 @@ The [sync contract](docs/SYNC.md) documents the implemented Worker/D1 inbox,
 15-minute sync, persisted automatic toggle, manual action and recovery. Run
 `npm ci`, `npm run typecheck`, `npm test`, `npm run db:local` and `npm run build`
 from `cloud/` without a login. Deployment uses browser OAuth; see
-[cloud/README.md](cloud/README.md). CI never deploys or requires secrets.
+[cloud/README.md](cloud/README.md). Run these checks locally; no GitHub Actions
+workflow is configured.
 PWA, mobile apps and two-way editing remain later work.
 
 The shared API should carry note identity/content and task status. Window

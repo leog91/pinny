@@ -9,7 +9,7 @@
   behavior; execute desktop tests and UI checks on Windows.
 - Use `bash scripts/build-windows.sh` for a development cross-build and
   `Build-Pinny.ps1` on Windows for release packaging. Run desktop Go tests from
-  `Pinny.Go/` on Windows. See `.github/workflows/checks.yml` for CI coverage.
+  `Pinny.Go/` on Windows. Keep checks local; do not add GitHub Actions workflows.
 - Preserve existing JSON compatibility and local notes when changing storage.
 - Keep credentials and generated dependency/runtime files out of Git. Cloudflare
   account credentials must never be shipped in a client.

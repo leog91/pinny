@@ -63,7 +63,7 @@ bash scripts/build-windows.sh
 This produces `dist/Pinny.exe` without the embedded release icon. It does not run
 Windows tests or provide a Linux/macOS desktop app. In WSL, when working in the
 Windows-mounted checkout, launch it with `./dist/Pinny.exe` through Windows
-interoperability. On Linux/macOS without Windows, use Windows CI or another
+interoperability. On Linux/macOS without Windows, use another
 Windows machine for runtime checks.
 
 See [development across operating systems](DEVELOPMENT.md) for checkout locations,
@@ -92,9 +92,10 @@ Run desktop tests from the repository root in Windows PowerShell:
 go -C Pinny.Go test ./...
 ```
 
-CI checks Linux portable sync tests and Windows cross-compilation, independent
-Worker/local D1 tests, and Windows desktop tests/release packaging. Interactive
-UI smoke checks still require a Windows desktop.
+Run checks locally: portable sync tests and Windows cross-compilation on Linux,
+Worker/local D1 tests independently, and desktop tests/release packaging on
+Windows. Interactive UI smoke checks require a Windows desktop. GitHub Actions
+workflows are intentionally disabled to avoid using GitHub compute.
 
 `bin`, `obj`, and `dist` are ignored by Git. A GitHub source checkout will not contain the executable; attach it to a GitHub Release if you want others to download it without building.
 
@@ -105,7 +106,6 @@ UI smoke checks still require a Windows desktop.
 - `Pinny.Go/Pinny.ico`: active app icon.
 - `Build-Pinny.ps1`: main Go release build with icon.
 - `scripts/build-windows.sh`: development cross-build from Bash/WSL/Linux/macOS.
-- `.github/workflows/checks.yml`: Linux compilation and Windows test/release checks.
 - `cloud/`: TypeScript Worker API, versioned D1 migrations and mobile-friendly website.
 - `Pinny.Go/internal/capture/`: portable incoming-sync protocol and tests.
 - `docs/SYNC.md`: API, desktop setup, delivery recovery and future client boundaries.

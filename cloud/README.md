@@ -76,7 +76,7 @@ npm run deploy
 
 No command enables a paid plan. Check the account is on Workers Free before
 proceeding; stop rather than accept a paid upgrade. Remote resources and secrets
-are never required by local tests or CI. Production and local credentials should
+are never required by local tests. Production and local credentials should
 be different. Only app credentials are given to clients; Cloudflare deployment
 credentials must never be shipped to a client. Rotate app credentials with
 `wrangler secret put` and update the relevant client. Desktop credential rotation
