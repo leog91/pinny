@@ -1,8 +1,13 @@
 # Pinny: technical notes and decisions
 
-Pinny is a Windows-only desktop notes app. The product goals are a small, responsive UI, low idle CPU and memory use, fast startup, and local storage. The [main README](README.md) covers usage and build commands; the [benchmark report](Benchmarks/README.md) records measured results.
+Pinny's implemented client is a Windows desktop notes app. The product goals are a small, responsive UI, low idle CPU and memory use, fast startup, and local storage. Development can use WSL, Linux or macOS with Windows runtime verification. The [main README](README.md) covers usage and build commands; the [benchmark report](Benchmarks/README.md) records measured results.
 
 ## Current status
+
+The Windows desktop target does not require a Windows-only repository workflow.
+See [development across operating systems](DEVELOPMENT.md) for WSL development,
+cross-compilation, Windows runtime verification, and independent future clients.
+Cloud sync is planned; `cloud/` currently reserves its component boundary only.
 
 | Build | UI implementation | Status |
 | --- | --- | --- |
@@ -43,6 +48,22 @@ The app does not coordinate writes between separate processes. Do not run two co
 The active Go app selects the data directory in this order: `--data-dir <folder>`, `PINNY_DATA_DIR`, the folder remembered in `%LOCALAPPDATA%\Pinny\settings.json`, then `%LOCALAPPDATA%\Pinny`. Its native folder picker copies the current notes and Trash into a destination without existing Pinny data, keeps the originals, and changes the remembered folder only after copying succeeds. Native Common Item Dialogs handle JSON export/import and folder selection. A version 1 JSON backup contains `Version`, `Notes`, and `Trash`; import appends both arrays, gives colliding IDs new GUIDs, and also accepts a plain notes array. The frozen Go experiment uses `--data-dir <folder>` or its own `%LOCALAPPDATA%\Pinny.Go` default and does not read `PINNY_DATA_DIR`. A web or mobile client cannot use a Windows file path as a shared store; supporting those clients will require a sync API, an authoritative note store, and a migration path for existing local notes. Note text and identity can be shared across clients, while window position, size, and pin state are desktop-specific presentation state.
 
 ## Decisions and tradeoffs
+
+### Planned cloud and future client architecture
+
+The [sync plan](docs/SYNC.md) defines a separate Cloudflare Worker/D1 capture inbox
+and simple website. The Windows client will keep local JSON storage and fetch
+new notes/todos on startup and every 15 minutes when automatic sync is enabled,
+with a persisted disable option and manual sync. These features are not yet
+implemented. No persistent connection, PC-facing webhook, background Windows
+service or cloud polling schedule is needed for this design.
+
+Keep cloud/web builds independent of Win32 tooling. New portable Go sync logic
+should be testable without Windows; Win32 UI integration remains Windows-specific.
+Future clients communicate through the API rather than sharing desktop window
+code. PWA, mobile clients and two-way note editing are deferred.
+
+### Current implementation decisions
 
 | Decision | Reason | Revisit when |
 | --- | --- | --- |

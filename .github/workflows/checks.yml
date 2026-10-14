@@ -1,0 +1,45 @@
+name: Checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cross-compile:
+    name: Linux / Windows cross-compilation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: Pinny.Go/go.mod
+          cache: false
+      - name: Build Windows desktop executable
+        run: bash scripts/build-windows.sh
+      - name: Compile Windows tests (execution requires Windows)
+        working-directory: Pinny.Go
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: '0'
+        run: go test -c -o ../dist/Pinny.tests.exe .
+
+  windows:
+    name: Windows / Desktop tests and release build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: Pinny.Go/go.mod
+          cache: false
+      - name: Run desktop tests
+        working-directory: Pinny.Go
+        run: go test ./...
+      - name: Build release with embedded icon
+        shell: pwsh
+        run: ./Build-Pinny.ps1

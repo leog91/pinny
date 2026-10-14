@@ -2,6 +2,12 @@
 
 These are the app versions used to compare UI technologies. Continue normal product development in `../Pinny.Go/`.
 
+These snapshots remain Windows runtime comparisons. They do not need to build
+when working on cloud/web or future clients on another OS. See [development
+across operating systems](../DEVELOPMENT.md) for the active project's WSL workflow
+and [the sync plan](../docs/SYNC.md) for planned cloud work. New sync features
+belong in the active components, not these snapshots.
+
 | Folder | Purpose |
 | --- | --- |
 | `Pinny.WpfBaseline/` | Copy of the WPF app at the 27 September 2026 comparison point. |

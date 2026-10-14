@@ -1,8 +1,8 @@
 # Pinny
 
-Pinny is a small Windows desktop notes app built with Go and direct Win32 calls. It uses local JSON files, with no database, web view, local server, or background service.
+Pinny is a small Windows desktop notes app built with Go and direct Win32 calls. The current app uses local JSON files, with no database, web view, local server, or background service. The repository supports WSL-first development and Windows runtime verification.
 
-`Pinny.Go/` is the main app for ongoing development and personal use. `Experiments/` contains frozen benchmark comparisons, including the WPF version and an independent snapshot of Go. See [technical notes and decisions](TECHNICAL.md).
+`Pinny.Go/` is the main app for ongoing development and personal use. `Experiments/` contains frozen benchmark comparisons, including the WPF version and an independent snapshot of Go. Start with [development across operating systems](DEVELOPMENT.md) for contributing, [technical notes and decisions](TECHNICAL.md) for architecture, and the [planned cloud sync](docs/SYNC.md) for the next component.
 
 ## Use the app
 
@@ -44,10 +44,32 @@ Choose **⋯ → Import notes...** to add a backup to your current collection. E
 ## Requirements
 
 - **Run:** Windows 10 or 11, x64.
-- **Build the main app:** Go for Windows x64 and PowerShell. The release script embeds the app icon.
-- **Build the C# comparisons:** .NET 8 SDK. Rust/Cargo is needed only for the Rust comparison.
+- **Development build:** Go 1.22 or newer and Bash in WSL/Linux/macOS, or Windows Go and PowerShell. Cross-builds target Windows x64.
+- **Run desktop tests and package a release:** Windows, Windows Go, and PowerShell. The release script embeds the app icon using Windows APIs.
+- **Build the frozen comparisons:** Windows and the relevant SDKs; .NET 8 for C#, Rust/Cargo for Rust. These are not needed to develop the active Go app.
+- **Cloud/web:** Planned, with no runnable component yet. Future Node/Wrangler tooling will be independent of desktop SDKs.
 
 ## Build from source
+
+### WSL, Linux or macOS development
+
+Keep editing and Git in your preferred environment. Install Go there, then run
+from the repository root:
+
+```bash
+bash scripts/build-windows.sh
+```
+
+This produces `dist/Pinny.exe` without the embedded release icon. It does not run
+Windows tests or provide a Linux/macOS desktop app. In WSL, when working in the
+Windows-mounted checkout, launch it with `./dist/Pinny.exe` through Windows
+interoperability. On Linux/macOS without Windows, use Windows CI or another
+Windows machine for runtime checks.
+
+See [development across operating systems](DEVELOPMENT.md) for checkout locations,
+test boundaries, and future cloud/mobile development.
+
+### Windows release and runtime checks
 
 From the repository root in PowerShell, run:
 
@@ -64,6 +86,15 @@ go run .
 Pop-Location
 ```
 
+Run desktop tests from the repository root in Windows PowerShell:
+
+```powershell
+go -C Pinny.Go test ./...
+```
+
+CI separately checks Linux cross-compilation and Windows desktop tests/release
+packaging. Interactive UI smoke checks still require a Windows desktop.
+
 `bin`, `obj`, and `dist` are ignored by Git. A GitHub source checkout will not contain the executable; attach it to a GitHub Release if you want others to download it without building.
 
 ## Project layout
@@ -72,11 +103,27 @@ Pop-Location
 - `Pinny.Go/storage.go`: active JSON storage and single-note migration.
 - `Pinny.Go/Pinny.ico`: active app icon.
 - `Build-Pinny.ps1`: main Go release build with icon.
-- `Experiments/Pinny.WpfBaseline/`, `Pinny.WinForms/`, `Pinny.Win32/`: three standalone source snapshots of the simple app.
-- `Experiments/Pinny.Rust/` and `Pinny.Go/`: frozen native Win32 comparisons; Rust is in-memory, while Go saves local JSON. See [build and benchmark commands](Benchmarks/README.md#rust-and-go-win32-experiments).
+- `scripts/build-windows.sh`: development cross-build from Bash/WSL/Linux/macOS.
+- `.github/workflows/checks.yml`: Linux compilation and Windows test/release checks.
+- `cloud/`: reserved Worker API, D1 migrations and website component; implementation pending.
+- `docs/SYNC.md`: planned capture/sync behavior and future client boundaries.
+- `Experiments/Pinny.WpfBaseline/`, `Experiments/Pinny.WinForms/`, `Experiments/Pinny.Win32/`: three standalone source snapshots of the simple app.
+- `Experiments/Pinny.Rust/` and `Experiments/Pinny.Go/`: frozen native Win32 comparisons; Rust is in-memory, while Go saves local JSON. See [build and benchmark commands](Benchmarks/README.md#rust-and-go-win32-experiments).
 - `Experiments/Baseline/`: model and storage source shared only by those snapshots; see [experiment structure](Experiments/README.md).
 - `Benchmarks/`: five-build comparison and scripts to build and measure the frozen experiments.
 - `TECHNICAL.md`: architecture and current technical decisions.
+- `DEVELOPMENT.md`: WSL-first workflow and development responsibilities by OS.
+
+## Planned cloud sync
+
+The next component will use a simple website, Cloudflare Worker and D1 inbox to
+send new notes/todos to the Windows client. The agreed behavior is startup sync,
+optional automatic sync every 15 minutes while Pinny runs, and a manual
+**Sync now** action. Disabling automatic sync also disables startup sync.
+
+These features and the options UI are not implemented yet. PWA, mobile apps and
+two-way editing are deferred. See [the sync plan](docs/SYNC.md) for scope and
+delivery requirements.
 
 ## Performance experiments
 

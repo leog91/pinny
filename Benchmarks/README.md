@@ -30,6 +30,12 @@ The C# and Go builds load synthetic notes from isolated JSON folders. Rust const
 
 ## Build and rerun
 
+These measurement and GUI scripts run on Windows. They are not prerequisites for
+WSL/cloud/web development, and the repository CI does not rerun the historical
+benchmark. For the active client's WSL cross-build and Windows verification,
+see [development across operating systems](../DEVELOPMENT.md). The root Bash
+build script targets the active client, not these frozen experiments.
+
 On Windows x64, install the .NET 8 SDK, Go for Windows x64, and Rust with Cargo and the `stable-x86_64-pc-windows-gnu` toolchain. The Rust project pins `windows-sys` 0.59.0 and builds with Rust's bundled GNU linker, so Visual Studio Build Tools are not required. From the repository root in PowerShell:
 
 ```powershell

@@ -14,3 +14,13 @@ dist/
 # Test output
 TestResults/
 Benchmarks/.data/
+
+# Cloud/web tooling and local credentials
+**/node_modules/
+**/.wrangler/
+**/.dev.vars
+**/.dev.vars.*
+**/.env
+**/.env.*
+!**/.env.example
+!**/.dev.vars.example
