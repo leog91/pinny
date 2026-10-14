@@ -1,0 +1,21 @@
+{
+  "name": "pinny-cloud",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "test": "vitest run && node --test test/website.test.mjs",
+    "typecheck": "tsc --noEmit",
+    "build": "wrangler deploy --dry-run",
+    "db:local": "wrangler d1 migrations apply pinny-inbox --local",
+    "db:remote": "wrangler d1 migrations apply pinny-inbox --remote",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.4.2",
+    "@cloudflare/workers-types": "^5.20261014.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0",
+    "wrangler": "^4.0.0"
+  }
+}

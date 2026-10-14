@@ -311,7 +311,12 @@ func run(count int) error {
 		if err != nil {
 			return fmt.Errorf("could not load Trash; saved data was not changed: %w", err)
 		}
+		if err := recoverSyncReceipts(saved, trash); err != nil {
+			return fmt.Errorf("could not recover sync receipts; saved notes were not changed")
+		}
 	}
+	initializeSync()
+	defer stopSync()
 	className := wide(windowClass)
 	instance := call(getModuleHandle, 0)
 	// Resource group #1 is added to the release executable by Build-Native.ps1.
@@ -383,8 +388,12 @@ func run(count int) error {
 			}
 		}
 	}
+	startAutomaticSync()
 	var message msg
 	for int32(call(getMessage, uintptr(unsafe.Pointer(&message)), 0, 0, 0)) > 0 {
+		if handleSyncMessage(message) {
+			continue
+		}
 		if handleEditorMessage(message) {
 			continue
 		}
@@ -466,6 +475,7 @@ func showNote(input initialNote) error {
 	call(appendMenu, n.menu, 0, exportID, uintptr(unsafe.Pointer(wide("Export notes..."))))
 	call(appendMenu, n.menu, 0, importID, uintptr(unsafe.Pointer(wide("Import notes..."))))
 	call(appendMenu, n.menu, 0, locationID, uintptr(unsafe.Pointer(wide("Choose notes folder..."))))
+	appendSyncMenu(n)
 	call(appendMenu, n.menu, mfSeparator, 0, 0)
 	call(appendMenu, n.menu, 0, quitID, uintptr(unsafe.Pointer(wide("Quit Pinny (keep notes)"))))
 	initialText := syscall.StringToUTF16(input.text)
@@ -539,6 +549,9 @@ func saveAllExcept(exclude uintptr) error {
 		return err
 	}
 	if err := saveNotes(dataDir, notes); err != nil {
+		return err
+	}
+	if err := finishSyncReceipts(); err != nil {
 		return err
 	}
 	saveErrorShown = false
@@ -761,6 +774,12 @@ func wndProc(hwnd, message, wp, lp uintptr) uintptr {
 			importNotes(hwnd)
 		case id == locationID:
 			changeNotesFolder(hwnd)
+		case id == syncNowID:
+			startSync(true)
+		case id == automaticSyncID:
+			toggleAutomaticSync(hwnd)
+		case id == configureSyncID:
+			configureSync(hwnd)
 		case colorName(id) != "":
 			n.theme = colorName(id)
 			updateColorMenu(n)
@@ -832,6 +851,12 @@ func showInfo(hwnd uintptr, message string) {
 	call(messageBox, hwnd, uintptr(unsafe.Pointer(wide(message))), uintptr(unsafe.Pointer(wide("Pinny"))), 0x40)
 }
 func moveToTrash(hwnd uintptr) {
+	if pendingSyncReceipts != nil {
+		if err := saveAllExcept(0); err != nil {
+			showSaveError(err)
+			return
+		}
+	}
 	if !persistenceEnabled {
 		showInfo(hwnd, "Trash is unavailable in --notes mode.")
 		return

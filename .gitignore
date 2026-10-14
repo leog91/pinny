@@ -24,3 +24,9 @@ Benchmarks/.data/
 **/.env.*
 !**/.env.example
 !**/.dev.vars.example
+
+# Desktop sync credentials and delivery state (safe *.example.json stays tracked)
+**/sync.json
+**/sync.local.json
+**/sync-pending.json
+**/sync-receipts.json

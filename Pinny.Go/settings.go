@@ -11,7 +11,40 @@ import (
 )
 
 type appSettings struct {
-	DataDir string `json:"DataDir"`
+	DataDir       string `json:"DataDir"`
+	AutomaticSync *bool  `json:"AutomaticSync,omitempty"`
+}
+
+func loadAppSettings() (appSettings, error) {
+	dir, err := defaultDataDir()
+	if err != nil {
+		return appSettings{}, err
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "settings.json"))
+	if errors.Is(err, os.ErrNotExist) {
+		return appSettings{}, nil
+	}
+	if err != nil {
+		return appSettings{}, err
+	}
+	var settings appSettings
+	err = json.Unmarshal(data, &settings)
+	return settings, err
+}
+
+func saveAppSettings(settings appSettings) error {
+	dir, err := defaultDataDir()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return err
+	}
+	return writeAtomic(filepath.Join(dir, "settings.json"), append(data, '\n'))
 }
 
 func savedDataDir() (string, error) {
@@ -37,23 +70,17 @@ func savedDataDir() (string, error) {
 }
 
 func saveDataDir(dir string) error {
-	settingsDir, err := defaultDataDir()
+	settings, err := loadAppSettings()
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(settingsDir, 0700); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(appSettings{dir}, "", "  ")
-	if err != nil {
-		return err
-	}
-	return writeAtomic(filepath.Join(settingsDir, "settings.json"), append(data, '\n'))
+	settings.DataDir = dir
+	return saveAppSettings(settings)
 }
 
 func copyNotesToFolder(destination string, notes, deleted []noteState) error {
 	// Do not replace a different collection or a legacy single-note store.
-	for _, name := range []string{"notes.json", "trash.json", "note.json"} {
+	for _, name := range []string{"notes.json", "trash.json", "note.json", "sync-receipts.json", "sync-pending.json"} {
 		_, err := os.Lstat(filepath.Join(destination, name))
 		if err == nil {
 			return errors.New("this folder already contains Pinny notes; choose a folder without notes.json, trash.json, or note.json")
@@ -117,6 +144,13 @@ func switchNotesFolder(destination string) error {
 		return err
 	}
 	if err := copyNotesToFolder(destination, notes, trash); err != nil {
+		return err
+	}
+	if receipts, err := os.ReadFile(filepath.Join(dataDir, "sync-receipts.json")); err == nil {
+		if err := writeAtomic(filepath.Join(destination, "sync-receipts.json"), receipts); err != nil {
+			return err
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 	if err := saveDataDir(destination); err != nil {

@@ -9,7 +9,7 @@ needed to run and verify the native desktop app, not to edit its source.
 | Location | Purpose | Development environment |
 | --- | --- | --- |
 | `Pinny.Go/` | Active Go/Win32 desktop client | Edit anywhere; cross-compile from Linux/macOS; run tests and UI on Windows |
-| `cloud/` | Reserved for Worker API, D1 migrations and simple website | WSL, Linux, macOS or Windows; implementation not yet added |
+| `cloud/` | Worker API, D1 migrations and simple website | Node 24/npm in WSL, Linux, macOS or Windows; independent of desktop |
 | `docs/` | Sync plan and future shared API specification | Any OS |
 | `mobile/` | Future mobile client | Create when needed; tooling depends on target platform |
 | `Experiments/`, `Benchmarks/` | Frozen comparisons and Windows measurement tools | Keep separate from active development |
@@ -80,15 +80,15 @@ powershell.exe -NoProfile -File "$(wslpath -w "$PWD/Build-Pinny.ps1")"
 This still uses Windows Go and Windows PowerShell. Linux Go alone is sufficient
 for the Bash development cross-build, but not this Windows packaging command.
 
-All existing active Go sources have Windows build constraints. A plain Linux
-`go test ./...` in `Pinny.Go/` therefore has no runnable package. As portable sync
-logic is introduced, put it in independent packages without Windows imports or
-build constraints, so its tests can execute on Linux and Windows. Keep Win32
-window updates, dialogs, and Windows-specific storage integration in the client.
+Win32 sources have Windows build constraints. Portable sync is in
+`Pinny.Go/internal/capture/`, without Windows imports. From `Pinny.Go/`, run
+`go test -race ./internal/...` in WSL/Linux; `go test ./...` runs portable packages
+on Linux and additionally desktop tests on Windows. Keep Win32 window updates,
+dialogs, and storage integration in the Windows client.
 
 ## Cloud, website and future clients
 
-Develop the future `cloud/` component with Node and Wrangler in your preferred
+Develop `cloud/` with Node 24 and local Wrangler in your preferred
 OS. Install dependencies in that OS; do not share `node_modules` between Windows
 and Linux. Commit dependency lockfiles. Keep Worker settings and D1 bindings in
 `cloud/wrangler.jsonc`, and schema changes in versioned SQL migrations. Keep
@@ -99,10 +99,12 @@ are ignored; safe example files may be committed. Authenticate Wrangler in the
 environment where you deploy. A deployed client receives app credentials, never
 Cloudflare account credentials.
 
-The [sync plan](docs/SYNC.md) records the agreed Worker/D1 inbox, 15-minute sync,
-automatic-sync toggle, manual action and delivery requirements. This behavior is
-planned, not implemented. PWA, mobile applications and full two-way editing remain
-later work.
+The [sync contract](docs/SYNC.md) documents the implemented Worker/D1 inbox,
+15-minute sync, persisted automatic toggle, manual action and recovery. Run
+`npm ci`, `npm run typecheck`, `npm test`, `npm run db:local` and `npm run build`
+from `cloud/` without a login. Deployment uses browser OAuth; see
+[cloud/README.md](cloud/README.md). CI never deploys or requires secrets.
+PWA, mobile apps and two-way editing remain later work.
 
 The shared API should carry note identity/content and task status. Window
 position, size, pin state and theme remain desktop presentation settings.

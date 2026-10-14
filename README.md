@@ -2,7 +2,7 @@
 
 Pinny is a small Windows desktop notes app built with Go and direct Win32 calls. The current app uses local JSON files, with no database, web view, local server, or background service. The repository supports WSL-first development and Windows runtime verification.
 
-`Pinny.Go/` is the main app for ongoing development and personal use. `Experiments/` contains frozen benchmark comparisons, including the WPF version and an independent snapshot of Go. Start with [development across operating systems](DEVELOPMENT.md) for contributing, [technical notes and decisions](TECHNICAL.md) for architecture, and the [planned cloud sync](docs/SYNC.md) for the next component.
+`Pinny.Go/` is the active app; `cloud/` is the independent Cloudflare capture inbox and website. `Experiments/` contains frozen benchmark comparisons. Start with [development across operating systems](DEVELOPMENT.md), [technical notes](TECHNICAL.md), and [capture and sync](docs/SYNC.md).
 
 ## Use the app
 
@@ -47,7 +47,7 @@ Choose **⋯ → Import notes...** to add a backup to your current collection. E
 - **Development build:** Go 1.22 or newer and Bash in WSL/Linux/macOS, or Windows Go and PowerShell. Cross-builds target Windows x64.
 - **Run desktop tests and package a release:** Windows, Windows Go, and PowerShell. The release script embeds the app icon using Windows APIs.
 - **Build the frozen comparisons:** Windows and the relevant SDKs; .NET 8 for C#, Rust/Cargo for Rust. These are not needed to develop the active Go app.
-- **Cloud/web:** Planned, with no runnable component yet. Future Node/Wrangler tooling will be independent of desktop SDKs.
+- **Cloud/web:** Node 24 and npm; local Wrangler and D1 tooling are independent of desktop SDKs. See [cloud/README.md](cloud/README.md).
 
 ## Build from source
 
@@ -92,8 +92,9 @@ Run desktop tests from the repository root in Windows PowerShell:
 go -C Pinny.Go test ./...
 ```
 
-CI separately checks Linux cross-compilation and Windows desktop tests/release
-packaging. Interactive UI smoke checks still require a Windows desktop.
+CI checks Linux portable sync tests and Windows cross-compilation, independent
+Worker/local D1 tests, and Windows desktop tests/release packaging. Interactive
+UI smoke checks still require a Windows desktop.
 
 `bin`, `obj`, and `dist` are ignored by Git. A GitHub source checkout will not contain the executable; attach it to a GitHub Release if you want others to download it without building.
 
@@ -105,8 +106,9 @@ packaging. Interactive UI smoke checks still require a Windows desktop.
 - `Build-Pinny.ps1`: main Go release build with icon.
 - `scripts/build-windows.sh`: development cross-build from Bash/WSL/Linux/macOS.
 - `.github/workflows/checks.yml`: Linux compilation and Windows test/release checks.
-- `cloud/`: reserved Worker API, D1 migrations and website component; implementation pending.
-- `docs/SYNC.md`: planned capture/sync behavior and future client boundaries.
+- `cloud/`: TypeScript Worker API, versioned D1 migrations and mobile-friendly website.
+- `Pinny.Go/internal/capture/`: portable incoming-sync protocol and tests.
+- `docs/SYNC.md`: API, desktop setup, delivery recovery and future client boundaries.
 - `Experiments/Pinny.WpfBaseline/`, `Experiments/Pinny.WinForms/`, `Experiments/Pinny.Win32/`: three standalone source snapshots of the simple app.
 - `Experiments/Pinny.Rust/` and `Experiments/Pinny.Go/`: frozen native Win32 comparisons; Rust is in-memory, while Go saves local JSON. See [build and benchmark commands](Benchmarks/README.md#rust-and-go-win32-experiments).
 - `Experiments/Baseline/`: model and storage source shared only by those snapshots; see [experiment structure](Experiments/README.md).
@@ -114,16 +116,19 @@ packaging. Interactive UI smoke checks still require a Windows desktop.
 - `TECHNICAL.md`: architecture and current technical decisions.
 - `DEVELOPMENT.md`: WSL-first workflow and development responsibilities by OS.
 
-## Planned cloud sync
+## Capture and sync
 
-The next component will use a simple website, Cloudflare Worker and D1 inbox to
-send new notes/todos to the Windows client. The agreed behavior is startup sync,
-optional automatic sync every 15 minutes while Pinny runs, and a manual
-**Sync now** action. Disabling automatic sync also disables startup sync.
+The optional website, Cloudflare Worker and D1 inbox send new notes/todos to the
+Windows client. Configure the endpoint and desktop app credential using
+**⋯ → Configure sync...** and a private JSON file; see [setup](docs/SYNC.md).
+Unconfigured installations make no network requests.
 
-These features and the options UI are not implemented yet. PWA, mobile apps and
-two-way editing are deferred. See [the sync plan](docs/SYNC.md) for scope and
-delivery requirements.
+**⋯ → Automatic sync** defaults on and checks at startup and every 15 minutes.
+Uncheck it to disable both startup and scheduled sync. **Sync now** remains
+available. Requests do not block editing; incoming items stay in the cloud until
+saved locally. Todos become editable `[ ]`/`[x]` text notes. Local notes are not
+uploaded. PWA, native mobile apps and two-way editing are deferred. See
+[cloud commands](cloud/README.md) and [API/recovery](docs/SYNC.md).
 
 ## Performance experiments
 

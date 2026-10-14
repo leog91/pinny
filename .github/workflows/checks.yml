@@ -20,6 +20,9 @@ jobs:
           cache: false
       - name: Build Windows desktop executable
         run: bash scripts/build-windows.sh
+      - name: Run portable sync tests on Linux
+        working-directory: Pinny.Go
+        run: go test -race ./internal/...
       - name: Compile Windows tests (execution requires Windows)
         working-directory: Pinny.Go
         env:
@@ -27,6 +30,25 @@ jobs:
           GOARCH: amd64
           CGO_ENABLED: '0'
         run: go test -c -o ../dist/Pinny.tests.exe .
+
+  cloud:
+    name: Cloud / Worker and local D1 tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloud
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: cloud/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run db:local
+      - run: npm run build
 
   windows:
     name: Windows / Desktop tests and release build

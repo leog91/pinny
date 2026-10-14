@@ -161,7 +161,7 @@ func exportNotes(owner uintptr) {
 
 func exportNotesToFile(path string) (notesBackup, error) {
 	config, _ := defaultDataDir()
-	for _, protected := range []string{filepath.Join(dataDir, "notes.json"), filepath.Join(dataDir, "trash.json"), filepath.Join(dataDir, "note.json"), filepath.Join(config, "settings.json")} {
+	for _, protected := range []string{filepath.Join(dataDir, "notes.json"), filepath.Join(dataDir, "trash.json"), filepath.Join(dataDir, "note.json"), filepath.Join(dataDir, "sync-receipts.json"), filepath.Join(dataDir, "sync-pending.json"), filepath.Join(config, "settings.json"), filepath.Join(config, "sync.json")} {
 		if samePath(path, protected) {
 			return notesBackup{}, errors.New("choose a separate backup file, rather than an active notes or settings file")
 		}

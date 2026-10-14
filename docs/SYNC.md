@@ -1,73 +1,141 @@
-# Planned capture and sync
+# Capture and incoming sync, version 1
 
-Status: design agreed; no Worker, database deployment, website, or desktop sync
-implementation exists yet. The current Windows app continues to save local JSON.
+Implemented locally in `cloud/` and `Pinny.Go/`; remote setup is separate. Pinny
+continues to use local JSON. A mobile-friendly website submits notes/todos to an
+authenticated Worker and D1 inbox. The PC makes outbound requests; there is no
+local server, persistent connection, Windows service, cloud cron or PC webhook.
 
-## First version
+## Desktop setup and triggers
 
-Use a simple mobile-friendly website to submit a new note or todo to an
-authenticated Cloudflare Worker API. Persist the item in a D1 inbox. Pinny fetches
-pending items with outbound HTTPS requests and saves them locally as new notes.
-The PC does not expose an incoming endpoint or maintain a persistent connection.
+1. Set up the Worker using [cloud/README.md](../cloud/README.md).
+2. Copy [sync.example.json](sync.example.json) to a **private `sync.local.json` file**
+   (ignored by Git), replacing
+   `Endpoint` with the Worker HTTPS origin (no path/query) and `Credential` with
+   its `SYNC_TOKEN`. Never use a Cloudflare account token.
+3. Choose **⋯ → Configure sync...**, select that JSON file, then **Sync now**.
+   Alternatively, while Pinny is closed, write the configuration directly to
+   `%LOCALAPPDATA%\Pinny\sync.json`.
 
-| Trigger | Planned behavior |
+Configuration is copied to `%LOCALAPPDATA%\Pinny\sync.json`, separate from a custom
+notes folder. The credential is plaintext, protected by the Windows user profile;
+do not share this file or a settings-folder backup. Remove it and restart to
+disconnect. HTTPS is required except explicit localhost/127.0.0.1/::1 HTTP for
+local development. No config or invalid config means **no network requests**.
+`--notes` mode never syncs. Environment variables do not configure sync.
+
+| Trigger | Behavior |
 | --- | --- |
-| Pinny starts with automatic sync enabled | Fetch pending items immediately |
-| Pinny remains running with automatic sync enabled | Check every 15 minutes; skip overlapping requests |
-| Automatic sync is disabled in Options | Stop scheduled and startup sync; remember the choice across restarts |
-| User selects Sync now | Fetch immediately, including when automatic sync is disabled |
-| PC is offline or Pinny is closed | Keep items in D1 until a later successful sync |
+| Startup, configured and automatic enabled | Fetch immediately |
+| While running with automatic enabled | Fetch every 15 minutes; skip overlap |
+| **⋯ → Automatic sync**, unchecked | Disable startup and future scheduled requests |
+| **⋯ → Sync now** | Fetch even when automatic is disabled |
+| Offline, closed or requests/saves fail | Retain items until later successful sync |
 
-Automatic sync should be enabled by default once the user configures a valid
-endpoint and app credential. An unconfigured installation makes no sync requests.
-The interval is measured while the process runs; no Windows service or cloud cron
-job is required. Network requests must not block the Win32 UI thread.
+Automatic sync defaults on. The checkmark is persisted in the existing
+`%LOCALAPPDATA%\Pinny\settings.json` as optional `AutomaticSync`; absent means on.
+The folder picker preserves it. Turning it on schedules the next 15-minute check;
+use Sync now for an immediate check. Disabling does not cancel an in-flight
+delivery. Reconfiguring is blocked during sync. Manual sync reports success or
+failure; automatic failures are quiet, without credential/content logging.
+A native dialog can defer applying a fetched batch until it closes. HTTP runs
+in a Go goroutine with 20-second request timeouts and a five-minute action limit;
+Win32 updates and local saves stay on the UI thread. Editing works during requests.
 
-## Delivery and data boundaries
+## API contract
 
-- Give each submission a stable delivery ID and retry key so retries cannot create
-  duplicate notes. Persist receipt state across desktop restarts.
-- Acknowledge delivery only after the local note has been saved successfully.
-  Interrupted requests must leave the cloud item available for retry.
-- Fetch bounded batches of pending items or changes using a persisted cursor.
-  Advance the cursor only after saving the batch safely. Define the exact API
-  contract and recovery behavior during implementation.
-- Keep app authentication separate from Cloudflare deployment authentication.
-  Protect both submission and fetch endpoints. Do not ship Cloudflare account
-  tokens in the website or desktop executable.
-- Keep existing local JSON and backup compatibility. Cloud failures must not
-  prevent reading, editing, or saving local notes.
-- Share content, identity and todo status through the API. Keep desktop window
-  geometry, pin state and theme local. Todo presentation and the compatible local
-  data representation still need implementation decisions.
+Version prefix: `/api/v1`. UTF-8 JSON bodies, `no-store` responses. Both app
+secrets must be at least 32 characters; generate separate random values locally.
+All API requests require `Authorization: Bearer <app credential>`. One inbox,
+one desktop consumer. No CORS or cookies; browser requests must be same-origin.
+Never put credentials in query strings.
 
-The first version is an incoming capture inbox. Sending all existing local notes
-to the cloud, editing existing notes remotely, syncing deletions, and merging
-simultaneous edits are outside this version. A later two-way protocol needs
-revision checks, deletion records and an explicit conflict policy.
+### POST `/items` — capture credential
 
-## Repository and Cloudflare configuration
+```json
+{
+  "id": "12345678-1234-4234-8234-123456789abc",
+  "kind": "todo",
+  "text": "Buy milk",
+  "title": "Shopping",
+  "completed": false
+}
+```
 
-Keep the Worker source, basic website, package manifest/lockfile,
-`wrangler.jsonc`, and versioned D1 SQL migrations under `cloud/`. Develop and test
-that component independently on WSL, Linux, macOS or Windows. The initial website
-can be served by the same Worker as the API.
+Create a lowercase UUID once, **before** sending; keep the unchanged payload/ID
+until success. `kind` is `note` or `todo`. Text is nonblank, at most 16,000 UTF-8
+bytes, with no NUL. Optional title defaults empty, at most 100 Unicode characters,
+with no newline/NUL. Optional completed defaults false; notes cannot be completed.
+Request bodies are bounded to 70,000 bytes. `200 {"id":"…"}` means stored, including
+an exact retry. Same ID with changed content gives `409 {"error":"id_conflict"}`,
+even after delivery. The D1 primary key protects concurrent retries.
 
-Use Wrangler from the preferred development environment. Keep configuration in
-Git, secret values in Cloudflare secrets and ignored local development files,
-and local test databases separate from deployed data. The Cloudflare dashboard
-is useful for account setup and inspecting usage and logs. MCP is optional.
+### GET `/pending` — desktop sync credential
 
-Start with local API/database tests, then create the remote resources and deploy,
-then connect the desktop client. Verify offline delivery, duplicate prevention,
-failed local saves, restart recovery and the automatic-sync toggle.
+Returns `200 {"items":[...]}`: up to 50 undelivered items, ordered by `createdAt`,
+then ID, with submission fields plus UTC `createdAt`. Fetch is non-destructive;
+no lease or expiry. Empty means caught up. One action processes up to 20 batches
+(1,000 items); remaining items wait for the next action. **No cursor**: only ack
+removes items from pending results, so failures cannot advance past unsaved work.
 
-## Later clients
+### POST `/ack` — desktop sync credential
 
-A PWA, mobile app, bots or other desktop clients can use the same documented API.
-They own their UI/toolchain and do not depend on Win32 source or Windows build
-scripts. PWA and native mobile implementation are deferred; mobile build host
-requirements depend on platform and framework.
+```json
+{ "ids": ["12345678-1234-4234-8234-123456789abc"] }
+```
 
-See [development across operating systems](../DEVELOPMENT.md) for the checkout,
-build and verification workflow.
+Accepts 1–50 UUIDs. Returns `200 {"ok":true}`; repeated ack and unknown IDs are
+harmless. Acknowledged rows retain IDs **and content** indefinitely for retry
+comparison; `delivered_at` excludes them from pending results. They are not
+broadcast to other desktops. Accounts, per-consumer delivery and retention/purge
+policy are future work.
+
+Errors: `400 invalid_request`, `401 unauthorized`, `403 forbidden`, `404 not_found`,
+`409 id_conflict`, `503 temporarily_unavailable`. No error includes note text,
+credentials or raw DB exceptions. The desktop rejects redirects rather than
+forwarding credentials. `cloud/test/` contains runnable contract examples.
+
+## Local representation and recovery
+
+- A submission creates a new plain-text note. Todos use `[ ] ` or `[x] ` before
+  text: deliberately editable text, **not** a new task widget/status model. Local
+  checkbox-text edits are not sent to the cloud.
+- Local IDs are deterministic UUID-shaped SHA-256-derived values, namespaced by
+  Worker origin and submission UUID. Defaults are a visible 320×320 window, Light
+  theme, unpinned. Geometry, pin state and theme remain local and absent from API.
+- Before importing, atomically write `sync-pending.json`, an ID-only journal in
+  the notes folder. Create editors, snapshot all notes including current edits,
+  save `notes.json`, then atomically save `sync-receipts.json`. **Only then ack**.
+  A failure does not acknowledge or remove the cloud item.
+- Receipts prevent recreation even after emptying Trash. Existing note/Trash IDs
+  also prevent duplicate import after a lost ack or crash. Startup recovers
+  journal IDs only if present in durably saved notes/Trash; unsaved IDs stay for
+  cloud retry. Receipt-save failures preserve the journal and must be resolved
+  before quitting or trashing incoming notes.
+- Local editing remains available after failures. An editor created before a
+  failed save can stay visible; retry saves it rather than creating another copy.
+  Receipt corruption fails closed, rather than guessing.
+- Folder switching copies receipts, notes and Trash, leaving originals. Export
+  cannot overwrite active sync files or credentials. Existing arrays, legacy
+  single-note files and version-1 backups retain their format. Backups contain
+  notes/Trash, **not credentials or the receipt ledger**. For full machine sync
+  recovery privately preserve the ledger too. A notes-only restore deduplicates
+  IDs still present but cannot remember permanently deleted deliveries.
+
+Keep one process per notes folder; simultaneous JSON writers are unsupported.
+Do not remove receipt files while cloud items may be pending. Changing Worker
+origin creates a new inbox identity; credential rotation on the same origin
+preserves it. Do not repurpose a database's UUIDs for new items.
+
+## Validation and deferred scope
+
+Linux executes portable Go tests (retry/ack/save failure, cancellation, redirects,
+validation, identity and todo text), and independent Worker/D1/browser retry-logic
+tests. Windows additionally tests real Win32 editors and HTTP: startup, responsive
+editing during requests, overlap, failed saves/retry, persisted automatic toggle,
+manual path, receipts and folder changes. Cross-compilation alone is **not**
+runtime verification. CI runs both platforms; interactive picker/mobile-layout
+checks are additional smoke checks.
+
+PWA, native mobile apps, bots, persistent connections, PC webhooks, uploading
+existing local notes, two-way editing, deletion sync and conflict merging remain
+deferred. Future clients can use the API without Win32 code or desktop SDKs.

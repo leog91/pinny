@@ -7,7 +7,8 @@ Pinny's implemented client is a Windows desktop notes app. The product goals are
 The Windows desktop target does not require a Windows-only repository workflow.
 See [development across operating systems](DEVELOPMENT.md) for WSL development,
 cross-compilation, Windows runtime verification, and independent future clients.
-Cloud sync is planned; `cloud/` currently reserves its component boundary only.
+Incoming capture is implemented in independent `cloud/`; remote resources and
+app credentials require separate setup.
 
 | Build | UI implementation | Status |
 | --- | --- | --- |
@@ -25,7 +26,7 @@ The active Go app was copied from the measured Go experiment when Go was selecte
 The active Go app and the saved-note comparison builds share the same note JSON fields, while each owns its storage code. Rust remains in-memory.
 
 - One process owns all open note windows. Each window has its own text, position, size, pin state, and Light/Dark/Paper theme.
-- The active app owns its [Win32 UI](Pinny.Go/main.go) and [JSON storage code](Pinny.Go/storage.go). The Go benchmark snapshot has separate source under `Experiments/Pinny.Go/`; the three C# snapshots compile their own source under [Experiments/Baseline](Experiments/Baseline). There is no database, sync service, web view, local server, dependency injection container, or third-party UI framework.
+- The active app owns its [Win32 UI](Pinny.Go/main.go) and [JSON storage code](Pinny.Go/storage.go). The Go benchmark snapshot has separate source under `Experiments/Pinny.Go/`; the three C# snapshots compile their own source under [Experiments/Baseline](Experiments/Baseline). Desktop storage remains JSON, with no local database, web view, server, Windows background service, or third-party UI framework. Optional incoming capture uses the independent Worker/D1 inbox.
 - Changes queue a save after 500 ms of inactivity. Go and C# Win32 use `SetTimer` / `KillTimer`; WPF uses a stopped-and-restarted `DispatcherTimer` per window; WinForms uses one stopped-and-restarted forms timer. None is a continuously running polling loop.
 - A save serializes the current list of notes to `notes.json.tmp` in the same directory, then moves it over `notes.json`. Saving the whole list keeps the implementation small; write and serialization work will grow with total note content.
 - In the active Go app, **Quit** and the window close event save all open notes. Moving a note to Trash saves its state to `trash.json` before removing it from `notes.json`. The newest trashed note can be restored from the menu; Empty Trash requires confirmation. Trashed notes have no automatic expiry. The frozen comparisons retain their original close behavior.
@@ -45,23 +46,30 @@ The experimental stores are separate so comparing builds does not overwrite the 
 
 The app does not coordinate writes between separate processes. Do not run two copies against the same data directory.
 
-The active Go app selects the data directory in this order: `--data-dir <folder>`, `PINNY_DATA_DIR`, the folder remembered in `%LOCALAPPDATA%\Pinny\settings.json`, then `%LOCALAPPDATA%\Pinny`. Its native folder picker copies the current notes and Trash into a destination without existing Pinny data, keeps the originals, and changes the remembered folder only after copying succeeds. Native Common Item Dialogs handle JSON export/import and folder selection. A version 1 JSON backup contains `Version`, `Notes`, and `Trash`; import appends both arrays, gives colliding IDs new GUIDs, and also accepts a plain notes array. The frozen Go experiment uses `--data-dir <folder>` or its own `%LOCALAPPDATA%\Pinny.Go` default and does not read `PINNY_DATA_DIR`. A web or mobile client cannot use a Windows file path as a shared store; supporting those clients will require a sync API, an authoritative note store, and a migration path for existing local notes. Note text and identity can be shared across clients, while window position, size, and pin state are desktop-specific presentation state.
+The active Go app selects the data directory in this order: `--data-dir <folder>`, `PINNY_DATA_DIR`, the folder remembered in `%LOCALAPPDATA%\Pinny\settings.json`, then `%LOCALAPPDATA%\Pinny`. Its native folder picker copies the current notes, Trash and sync receipts into a destination without existing Pinny data, keeps the originals, and changes the remembered folder only after copying succeeds. Native Common Item Dialogs handle JSON export/import and folder selection. A version 1 JSON backup contains `Version`, `Notes`, and `Trash`; import appends both arrays, gives colliding IDs new GUIDs, and also accepts a plain notes array. The frozen Go experiment uses `--data-dir <folder>` or its own `%LOCALAPPDATA%\Pinny.Go` default and does not read `PINNY_DATA_DIR`. Web capture uses the Worker API, not a Windows file path. Full two-way editing would still require an authoritative note store, conflict policy and migration path for existing local notes. Note text and identity can be shared across clients, while window position, size, pin state and theme remain desktop presentation state.
 
 ## Decisions and tradeoffs
 
-### Planned cloud and future client architecture
+### Cloud capture and future clients
 
-The [sync plan](docs/SYNC.md) defines a separate Cloudflare Worker/D1 capture inbox
-and simple website. The Windows client will keep local JSON storage and fetch
-new notes/todos on startup and every 15 minutes when automatic sync is enabled,
-with a persisted disable option and manual sync. These features are not yet
-implemented. No persistent connection, PC-facing webhook, background Windows
-service or cloud polling schedule is needed for this design.
+The [sync contract](docs/SYNC.md) defines the Worker/D1 inbox and mobile-friendly
+website. The desktop keeps local JSON and fetches at startup and every 15 minutes
+when automatic sync is enabled, with a persisted toggle and manual action. HTTP
+runs off the UI thread; batches are applied on it. Deterministic IDs, an ID-only
+write-ahead journal and durable receipts prevent retry duplicates; ack follows
+successful local saving. No persistent connection, webhook, service or cron.
 
-Keep cloud/web builds independent of Win32 tooling. New portable Go sync logic
-should be testable without Windows; Win32 UI integration remains Windows-specific.
+Cloud/web builds are independent of Win32. Portable Go sync logic in
+`Pinny.Go/internal/capture/` is tested on Linux; integration is Windows-specific.
 Future clients communicate through the API rather than sharing desktop window
 code. PWA, mobile clients and two-way note editing are deferred.
+
+V1 uses separate high-entropy capture and desktop app credentials for one inbox
+and one consumer. Cloudflare account credentials never reach clients. The browser
+retains only a pending payload/ID, not credentials. D1 retains delivered content
+for idempotency comparison. Todos use compatible plain-text `[ ]`/`[x]` prefixes,
+not new status fields. Geometry/pin/theme stay local. Receipts are separate from
+version-1 backups; privately copy the ledger for full machine recovery.
 
 ### Current implementation decisions
 
