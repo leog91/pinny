@@ -4,6 +4,9 @@ Pinny's implemented client is a Windows desktop notes app. The product goals are
 
 ## Current status
 
+See the [active desktop memory investigation](docs/MEMORY.md) for current
+Windows measurements, allocation improvements, and reproduction commands.
+
 The Windows desktop target does not require a Windows-only repository workflow.
 See [development across operating systems](DEVELOPMENT.md) for WSL development,
 cross-compilation, Windows runtime verification, and independent future clients.

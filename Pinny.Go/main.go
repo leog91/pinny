@@ -203,7 +203,8 @@ var (
 	windowOrder []uintptr
 	trash       []noteState
 	palettes    = make(map[string]palette)
-	// Proc.Call takes uintptr arguments, so keep all UTF-16 buffers rooted.
+	// Cache a bounded number of short UI strings. Dynamic content must not
+	// grow the cache without limit.
 	strings            = make(map[string]*uint16)
 	font               uintptr
 	dataDir            string
@@ -224,7 +225,11 @@ func wide(s string) *uint16 {
 		return p
 	}
 	p := syscall.StringToUTF16Ptr(s)
-	strings[s] = p
+	if len(s) <= 256 && len(strings) < 128 {
+		strings[s] = p
+	}
+	// call/comCall use uintptrescapes to keep temporary arguments alive until
+	// Windows returns. Retained native pointers (toolInfo.text) have Go owners.
 	return p
 }
 func rgb(r, g, b uint32) uint32 { return r | g<<8 | b<<16 }

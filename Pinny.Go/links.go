@@ -27,6 +27,7 @@ type webLink struct {
 
 func findLinks(text string) []webLink {
 	var links []webLink
+	byteOffset, utf16Offset := 0, 0
 	for _, match := range webLinks.FindAllStringIndex(text, -1) {
 		candidate := stdstrings.TrimRight(text[match[0]:match[1]], ".,;:!?")
 		for _, pair := range [][2]string{{"(", ")"}, {"[", "]"}, {"{", "}"}} {
@@ -35,8 +36,9 @@ func findLinks(text string) []webLink {
 			}
 		}
 		candidate = stdstrings.TrimRight(candidate, ".,;:!?")
-		start := len(utf16.Encode([]rune(text[:match[0]])))
-		end := start + len(utf16.Encode([]rune(candidate)))
+		start := utf16Offset + utf16Length(text[byteOffset:match[0]])
+		end := start + utf16Length(candidate)
+		byteOffset, utf16Offset = match[0], start
 		if stdstrings.HasPrefix(stdstrings.ToLower(candidate), "www.") {
 			candidate = "https://" + candidate
 		}
@@ -46,6 +48,17 @@ func findLinks(text string) []webLink {
 		}
 	}
 	return links
+}
+
+func utf16Length(text string) int {
+	length := 0
+	for _, r := range text {
+		length++
+		if r > 0xffff {
+			length++
+		}
+	}
+	return length
 }
 
 func linkAt(text string, index int) string {
@@ -71,6 +84,9 @@ func editorLinkAt(editor, position uintptr) string {
 	defer call(releaseDC, editor, dc)
 	text := editorText(editor)
 	areas := visibleLinkAreas(editor, dc, text)
+	if len(areas) == 0 {
+		return ""
+	}
 	// Prefer the actual link rectangle when two padded targets overlap.
 	for _, area := range areas {
 		if containsPoint(area.bounds, pt) {
@@ -152,6 +168,10 @@ type linkArea struct {
 // Group glyphs into one continuous rectangle per wrapped line. Hit testing
 // and underline painting use the same geometry, including scrolled notes.
 func visibleLinkAreas(editor, dc uintptr, text string) []linkArea {
+	links := findLinks(text)
+	if len(links) == 0 {
+		return nil
+	}
 	oldFont := call(selectObject, dc, call(sendMessage, editor, 0x0031, 0, 0))
 	defer call(selectObject, dc, oldFont)
 	var client rect
@@ -171,7 +191,7 @@ func visibleLinkAreas(editor, dc uintptr, text string) []linkArea {
 		last = len(characters)
 	}
 	var areas []linkArea
-	for _, link := range findLinks(text) {
+	for _, link := range links {
 		start, end := link.start, link.end
 		if start < first {
 			start = first
