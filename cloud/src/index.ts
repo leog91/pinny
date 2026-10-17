@@ -1,11 +1,13 @@
 import { page, script } from './website';
+import { manifest, serviceWorker, icon } from './pwa';
+import { hash, sessionSeconds, sessionToken, sessionCookie, sessionValid, sameOrigin } from './auth';
 
 export interface Env { DB: D1Database; CAPTURE_TOKEN: string; SYNC_TOKEN: string }
 export const idPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const headers = {
   'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
-  'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+  'Content-Security-Policy': "default-src 'none'; script-src 'self'; worker-src 'self'; manifest-src 'self'; img-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
 };
 function json(value: unknown, status = 200) {
   return Response.json(value, { status, headers });
@@ -40,6 +42,14 @@ async function body(request: Request): Promise<Record<string, unknown>> {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    const assets: Record<string, [string, string]> = {
+      '/manifest.webmanifest': [manifest, 'application/manifest+json'],
+      '/sw.js': [serviceWorker, 'text/javascript'], '/icon.svg': [icon, 'image/svg+xml'],
+    };
+    if (request.method === 'GET' && assets[url.pathname]) {
+      const [value, type] = assets[url.pathname];
+      return new Response(value, { headers: { ...headers, 'Content-Type': type } });
+    }
     if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/capture.js')) {
       return new Response(url.pathname === '/' ? page : script, {
         headers: { ...headers, 'Content-Type': url.pathname === '/' ? 'text/html; charset=utf-8' : 'text/javascript; charset=utf-8' },
@@ -48,9 +58,41 @@ export default {
     const capture = url.pathname === '/api/v1/items' && request.method === 'POST';
     const pending = url.pathname === '/api/v1/pending' && request.method === 'GET';
     const ack = url.pathname === '/api/v1/ack' && request.method === 'POST';
+    if (url.pathname === '/api/v1/session' && ['GET', 'POST', 'DELETE'].includes(request.method)) {
+      try {
+        if (request.method === 'GET') return json({ authenticated: await sessionValid(request, env.DB, env.CAPTURE_TOKEN) });
+        if (!sameOrigin(request)) return json({ error: 'forbidden' }, 403);
+        const old = sessionToken(request);
+        if (request.method === 'DELETE') {
+          if (old) await env.DB.prepare('DELETE FROM device_sessions WHERE token_hash = ?').bind(await hash(old)).run();
+          return Response.json({ ok: true }, { headers: { ...headers, 'Set-Cookie': sessionCookie('', 0) } });
+        }
+        if (!await authorized(request, env.CAPTURE_TOKEN)) return json({ error: 'unauthorized' }, 401);
+        let data;
+        try { data = await body(request); } catch { return json({ error: 'invalid_request' }, 400); }
+        if (typeof data.remember !== 'boolean') return json({ error: 'invalid_request' }, 400);
+        if (!data.remember) {
+          if (old) await env.DB.prepare('DELETE FROM device_sessions WHERE token_hash = ?').bind(await hash(old)).run();
+          return Response.json({ authenticated: true, remembered: false }, { headers: { ...headers, 'Set-Cookie': sessionCookie('', 0) } });
+        }
+        const token = [...crypto.getRandomValues(new Uint8Array(32))].map(b => b.toString(16).padStart(2, '0')).join('');
+        await env.DB.batch([
+          env.DB.prepare('DELETE FROM device_sessions WHERE expires_at <= ? OR token_hash = ?').bind(Date.now(), old ? await hash(old) : ''),
+          env.DB.prepare('INSERT INTO device_sessions(token_hash, credential_hash, expires_at) VALUES (?, ?, ?)')
+            .bind(await hash(token), await hash(env.CAPTURE_TOKEN), Date.now() + sessionSeconds * 1000),
+        ]);
+        return Response.json({ authenticated: true, remembered: true }, { headers: { ...headers, 'Set-Cookie': sessionCookie(token) } });
+      } catch { return json({ error: 'temporarily_unavailable' }, 503); }
+    }
     if (!capture && !pending && !ack) return json({ error: 'not_found' }, 404);
-    if (!await authorized(request, capture ? env.CAPTURE_TOKEN : env.SYNC_TOKEN)) return json({ error: 'unauthorized' }, 401);
-    // No cookies or CORS; reject browser cross-origin submission even with credentials.
+    try {
+      const bearer = await authorized(request, capture ? env.CAPTURE_TOKEN : env.SYNC_TOKEN);
+      if (!bearer) {
+        if (!capture || request.headers.has('Authorization') || !await sessionValid(request, env.DB, env.CAPTURE_TOKEN)) return json({ error: 'unauthorized' }, 401);
+        if (!sameOrigin(request)) return json({ error: 'forbidden' }, 403);
+      }
+    } catch { return json({ error: 'temporarily_unavailable' }, 503); }
+    // Bearer clients may omit Origin; browser requests must remain same-origin.
     const origin = request.headers.get('Origin');
     if (origin && origin !== url.origin) return json({ error: 'forbidden' }, 403);
     try {

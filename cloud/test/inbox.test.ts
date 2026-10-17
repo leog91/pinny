@@ -63,6 +63,14 @@ describe('D1 capture inbox', () => {
     expect(html).not.toContain(env.SYNC_TOKEN);
     expect(response.headers.get('Cache-Control')).toBe('no-store');
     expect(response.headers.get('Content-Security-Policy')).toContain("frame-ancestors 'none'");
+    for (const path of ['/capture.js','/sw.js','/manifest.webmanifest','/icon.svg']) {
+      const asset = await SELF.fetch('https://pinny.test' + path);
+      expect(asset.status).toBe(200);
+      expect(asset.headers.get('Set-Cookie')).toBeNull();
+      const source = await asset.text();
+      expect(source).not.toContain(env.CAPTURE_TOKEN);
+      expect(source).not.toContain(env.SYNC_TOKEN);
+    }
   });
   it('returns a redacted failure when database access fails', async () => {
     const request = new Request('https://pinny.test/api/v1/pending', { headers: { Authorization: `Bearer ${env.SYNC_TOKEN}` } });

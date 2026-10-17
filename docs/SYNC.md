@@ -45,9 +45,31 @@ Win32 updates and local saves stay on the UI thread. Editing works during reques
 
 Version prefix: `/api/v1`. UTF-8 JSON bodies, `no-store` responses. Both app
 secrets must be at least 32 characters; generate separate random values locally.
-All API requests require `Authorization: Bearer <app credential>`. One inbox,
-one desktop consumer. No CORS or cookies; browser requests must be same-origin.
-Never put credentials in query strings.
+Bearer API clients use `Authorization: Bearer <app credential>` as before. One
+inbox, one desktop consumer. No CORS. Browser requests must be same-origin;
+never put credentials in query strings. The website can alternatively capture
+using a remembered-device cookie; this never authorizes desktop pending/ack.
+
+### Website device login
+
+`POST /api/v1/session` with the capture bearer credential, JSON
+`{"remember":true}` and an exact same-origin `Origin` creates a separate random
+256-bit session, hashed in D1. A host-only `__Host-pinny-session` cookie is Secure,
+HttpOnly, SameSite=Strict and persistent for a fixed 30 days. Login rotates the
+current session. `remember:false` validates the credential, revokes/clears any
+current device cookie, and leaves the website using a memory-only bearer login.
+The raw capture credential is never placed in browser storage/cookies.
+
+`GET /api/v1/session` returns only `{"authenticated":true|false}` for the cookie.
+`DELETE /api/v1/session` revokes the presented session and expires its cookie.
+Both session mutations and cookie-authenticated `POST /items` require an exact
+same-origin Origin (missing/opaque origins rejected); conflicting cross-site
+Fetch Metadata is rejected too. Bearer clients may still omit Origin. No CORS
+headers are issued. Session responses are `no-store`, and no token is returned
+in a JSON body or URL. Cookie sessions cannot call pending or ack. Capture
+credential rotation invalidates all remembered devices; desktop sync is unchanged.
+Expiry/revocation preserves browser drafts/pending payloads for reauthentication.
+See [installation, offline recovery and device smoke tests](../cloud/README.md).
 
 ### POST `/items` — capture credential
 
@@ -136,6 +158,8 @@ manual path, receipts and folder changes. Cross-compilation alone is **not**
 runtime verification. Run checks locally on both platforms; interactive
 picker/mobile-layout checks are additional smoke checks.
 
-PWA, native mobile apps, bots, persistent connections, PC webhooks, uploading
+The capture website is an installable, offline-shell PWA with local drafts and
+explicit pending retry, not background delivery or a two-way offline sync engine.
+Native mobile apps, bots, persistent connections, PC webhooks, uploading
 existing local notes, two-way editing, deletion sync and conflict merging remain
 deferred. Future clients can use the API without Win32 code or desktop SDKs.

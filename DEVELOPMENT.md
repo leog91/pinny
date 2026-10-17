@@ -106,7 +106,8 @@ The [sync contract](docs/SYNC.md) documents the implemented Worker/D1 inbox,
 from `cloud/` without a login. Deployment uses browser OAuth; see
 [cloud/README.md](cloud/README.md). Run these checks locally; no GitHub Actions
 workflow is configured.
-PWA, mobile apps and two-way editing remain later work.
+The capture website includes an installable PWA shell, local drafts and explicit
+offline retry. Native mobile apps and two-way editing remain later work.
 
 The shared API should carry note identity/content and task status. Window
 position, size, pin state and theme remain desktop presentation settings.
