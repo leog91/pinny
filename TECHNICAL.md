@@ -4,8 +4,8 @@ Pinny's implemented client is a Windows desktop notes app. The product goals are
 
 ## Current status
 
-See the [active desktop memory investigation](docs/MEMORY.md) for current
-Windows measurements, allocation improvements, and reproduction commands.
+See the [active desktop memory investigation](docs/MEMORY.md) for Windows
+measurements from before stacks, allocation improvements, and reproduction commands.
 
 The Windows desktop target does not require a Windows-only repository workflow.
 See [development across operating systems](DEVELOPMENT.md) for WSL development,
@@ -26,12 +26,14 @@ The active Go app was copied from the measured Go experiment when Go was selecte
 
 ## Shared design
 
-The active Go app and the saved-note comparison builds share the same note JSON fields, while each owns its storage code. Rust remains in-memory.
+The active Go app and the saved-note comparison builds share the original
+note JSON fields. Each owns its storage code. Rust keeps notes in memory.
 
-- One process owns all open note windows. Each window has its own text, position, size, pin state, and Light/Dark/Paper theme.
+- One process owns all open note windows. In the active app, a standalone note has its own editor. A stack shares one native editor, window position, size, and pin state across an ordered set of notes. Each member has its own text, title, color, and timestamps.
+- **All notes** shows standalone and stacked notes in a Win32 list with a read-only preview. Selecting a row reads its current text. Opening the row focuses the existing editor and selects the member when it belongs to a stack.
 - The active app owns its [Win32 UI](Pinny.Go/main.go) and [JSON storage code](Pinny.Go/storage.go). The Go benchmark snapshot has separate source under `Experiments/Pinny.Go/`; the three C# snapshots compile their own source under [Experiments/Baseline](Experiments/Baseline). Desktop storage remains JSON, with no local database, web view, server, Windows background service, or third-party UI framework. Optional incoming capture uses the independent Worker/D1 inbox.
 - Changes queue a save after 500 ms of inactivity. Go and C# Win32 use `SetTimer` / `KillTimer`; WPF uses a stopped-and-restarted `DispatcherTimer` per window; WinForms uses one stopped-and-restarted forms timer. None is a continuously running polling loop.
-- A save serializes the current list of notes to `notes.json.tmp` in the same directory, then moves it over `notes.json`. Saving the whole list keeps the implementation small; write and serialization work will grow with total note content.
+- A save serializes the current list of notes to a temporary file in the same directory, then replaces `notes.json`. Saving the whole list keeps the implementation small. Write and serialization work grow with total note content.
 - In the active Go app, **Quit** and the window close event save all open notes. Moving a note to Trash saves its state to `trash.json` before removing it from `notes.json`. The newest trashed note can be restored from the menu; Empty Trash requires confirmation. Trashed notes have no automatic expiry. The frozen comparisons retain their original close behavior.
 - Build output (`bin`, `obj`, `dist`) is ignored by Git. The active Go release is a standalone Windows GUI executable and does not require a separately installed Go runtime. The C# comparison builds require the .NET 8 SDK to build.
 
@@ -49,6 +51,14 @@ The experimental stores are separate so comparing builds does not overwrite the 
 
 The app does not coordinate writes between separate processes. Do not run two copies against the same data directory.
 
+The active app keeps the flat note array. Optional `Stack` metadata identifies
+the group, its name, and the selected member. Members follow their order in the
+array. `ReturnToStack` stores a popped-out or trashed member's former group and
+position. Optional UTC `CreatedAt` and `ModifiedAt` fields travel with each
+note through local saves, Trash, and version-1 backups. New notes start with
+matching timestamps. PWA captures start with the Worker's submission time.
+Text edits and committed title changes update the modification time.
+
 The active Go app selects the data directory in this order: `--data-dir <folder>`, `PINNY_DATA_DIR`, the folder remembered in `%LOCALAPPDATA%\Pinny\settings.json`, then `%LOCALAPPDATA%\Pinny`. Its native folder picker copies the current notes, Trash and sync receipts into a destination without existing Pinny data, keeps the originals, and changes the remembered folder only after copying succeeds. Native Common Item Dialogs handle JSON export/import and folder selection. A version 1 JSON backup contains `Version`, `Notes`, and `Trash`; import appends both arrays, gives colliding IDs new GUIDs, and also accepts a plain notes array. The frozen Go experiment uses `--data-dir <folder>` or its own `%LOCALAPPDATA%\Pinny.Go` default and does not read `PINNY_DATA_DIR`. Web capture uses the Worker API, not a Windows file path. Full two-way editing would still require an authoritative note store, conflict policy and migration path for existing local notes. Note text and identity can be shared across clients, while window position, size, pin state and theme remain desktop presentation state.
 
 ## Decisions and tradeoffs
@@ -65,14 +75,16 @@ successful local saving. No persistent connection, webhook, service or cron.
 Cloud/web builds are independent of Win32. Portable Go sync logic in
 `Pinny.Go/internal/capture/` is tested on Linux; integration is Windows-specific.
 Future clients communicate through the API rather than sharing desktop window
-code. PWA, mobile clients and two-way note editing are deferred.
+code. The installable capture PWA stores drafts and pending retries locally.
+Native mobile clients and two-way note editing are deferred.
 
 V1 uses separate high-entropy capture and desktop app credentials for one inbox
 and one consumer. Cloudflare account credentials never reach clients. The browser
-retains only a pending payload/ID, not credentials. D1 retains delivered content
-for idempotency comparison. Todos use compatible plain-text `[ ]`/`[x]` prefixes,
-not new status fields. Geometry/pin/theme stay local. Receipts are separate from
-version-1 backups; privately copy the ledger for full machine recovery.
+stores drafts and pending payloads. A remembered device authenticates with a
+separate session cookie. D1 retains delivered content for idempotency comparison.
+Todos use plain-text `[ ]`/`[x]` prefixes. Window geometry, pin state, and note
+colors stay local. For full machine recovery, privately copy the receipt ledger
+alongside the notes. The ledger lives separately from version-1 backups.
 
 ### Current implementation decisions
 

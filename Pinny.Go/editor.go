@@ -16,6 +16,16 @@ const (
 
 func handleEditorMessage(message msg) bool {
 	for hwnd, n := range windows {
+		if n.stack != nil && message.message == 0x0100 && message.wParam == 0x75 { // F6
+			if message.hwnd == n.edit {
+				call(setFocus, n.stack.list)
+				return true
+			}
+			if message.hwnd == n.stack.list {
+				call(setFocus, n.edit)
+				return true
+			}
+		}
 		if message.hwnd == n.edit && (message.message == 0x0100 || message.message == 0x0101) && message.wParam == 0x11 {
 			refreshLinkCursor(n.edit)
 		}

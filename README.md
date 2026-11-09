@@ -4,26 +4,80 @@ Pinny is a small Windows desktop notes app built with Go and direct Win32 calls.
 
 `Pinny.Go/` is the active app; `cloud/` is the independent Cloudflare capture inbox and website. `Experiments/` contains frozen benchmark comparisons. Start with [development across operating systems](DEVELOPMENT.md), [technical notes](TECHNICAL.md), and [capture and sync](docs/SYNC.md).
 
+## How Pinny fits together
+
+```mermaid
+flowchart TB
+    Capture["Capture PWA"] -->|Send| Inbox["Worker and D1 inbox"]
+    Inbox -->|Incoming sync| Standalone
+    subgraph Desktop["Pinny on Windows"]
+        All["All notes<br/>Note · Stack · Created · Modified<br/>Read-only preview"]
+        Standalone["Standalone note<br/>One note per window"]
+        Stack["Stack<br/>Ordered note list and shared editor"]
+        All -->|Open| Standalone
+        All -->|Open| Stack
+        Standalone -->|Move to stack| Stack
+        Stack -->|Pop out| Standalone
+    end
+```
+
 ## Use the app
 
 On Windows x64, double-click `dist\Pinny.exe` after building it. The executable does not require a separate Go or .NET installation.
 
-- Type directly into any note. Each note has its own text, position, size, pin state, and theme.
+- Type directly into any note. Standalone notes have their own window. Notes in a stack share the stack window and keep their own text, title, and color.
 - Hold **Ctrl** and click an `http://`, `https://`, or `www.` link to open it in your default browser. Normal clicks still edit text.
 - Links have a subtle underline. Hover for a “Ctrl+click to open link” hint; hold Ctrl over the link to see a hand cursor.
-- Choose **⋯ → Rename note...** to replace the header's “Pinny” with your own title. Press **Enter** to save or **Escape** to cancel; an empty title restores “Pinny”. Titles also appear in the taskbar and are kept in saved notes, Trash, and backups.
-- Click **+** to create another note. New notes open slightly offset from the current one.
+- Choose **⋯ → Rename note...** to set a title. Press **Enter** to save or **Escape** to cancel. Standalone titles appear in the header and taskbar. In a stack, note titles appear in the list and the stack name appears in the header.
+- Click **+** in a standalone window to create another standalone note nearby. In a stack, **+** adds a note to that stack.
 - Drag a note's header to move it; drag an edge or corner to resize it.
-- Click the diamond to toggle always-on-top for that note.
+- Click the diamond to toggle always-on-top for the current window.
 - Choose **⋯ → Note color** for Light, Dark, Paper, Soft yellow, Peach, Rose, Mint, or Lavender. A checkmark shows the current color; each note remembers its own selection.
-- Click **⋯** to manage Trash, import or export notes, choose a notes folder, or quit while keeping all notes.
+- Click **⋯** to browse all notes, manage stacks and Trash, import or export notes, or choose a notes folder.
 - Click the red **×**, choose **⋯ → Quit Pinny (keep notes)**, or close any note window from the taskbar to exit while keeping every note.
+
+### Browse all notes
+
+Choose **⋯ → All notes...** to see standalone and stacked notes together. The
+list shows **Note**, **Stack**, **Created**, and **Modified**, with the most
+recently modified notes first. Select a row to read or copy its text in the
+read-only preview on the right. Double-click the row or choose **Open note** to
+edit it in its standalone window or stack.
+
+Dates display in your Windows local time. Pinny updates **Modified** when you
+edit the text or rename the note. Older notes and backups show **Unknown** for
+dates they did not record.
+
+### Group notes into stacks
+
+1. On a standalone note, choose **⋯ → Stacks → Create stack from this note**.
+   Use **Rename stack...** in the same menu to name it.
+2. Add notes with **+** in the stack, or open a standalone note's **Stacks**
+   menu and choose **Move to** followed by the stack name.
+3. Select a note in the stack list to edit it. Drag its row or use the
+   **↑ ↓** arrows in the stack header to change its saved position. **F6**
+   switches focus between the list and editor. With the list focused,
+   **Ctrl+↑** and **Ctrl+↓** also reorder the selected note.
+4. Choose **⋯ → Stacks → Pop out this note** to give the selected note its own
+   window. Use **Move back to** in that window's **Stacks** menu to return it
+   to its saved position. **New standalone note** creates a separate note
+   directly from a stack.
 
 ### Deleting and recovering notes
 
 Choose **⋯ → Move this note to Trash** to remove one note. Pinny saves that note to `trash.json` before removing it from `notes.json`; it stays recoverable across restarts. If it was the last open note, Pinny exits and opens a blank note on the next launch. Choose **⋯ → View Trash...** to browse deleted notes, read their contents, restore a selected note, permanently delete one note, or empty all of Trash. The list shows the newest deletion first. Both permanent deletion actions ask for confirmation. **⋯ → Restore last deleted note** remains a shortcut for the newest note. Trash is never emptied automatically.
 
-Pinny saves open notes to `%LOCALAPPDATA%\Pinny\notes.json` and trashed notes to `%LOCALAPPDATA%\Pinny\trash.json`. Changes save 500 ms after the last edit, move, resize, pin toggle, or theme change, and again when quitting. The Go app reads notes saved by the earlier WPF version in the same folder. When upgrading from the single-note version, Pinny loads the old `%LOCALAPPDATA%\Pinny\note.json` if `notes.json` does not exist. The old file is left in place as a backup. If a saved position is off-screen after a monitor change, Pinny moves that window back into view.
+Restoring a note opens it in a standalone window. If it came from a stack, use
+**⋯ → Stacks → Move back to** to return it.
+
+Pinny saves open notes to `%LOCALAPPDATA%\Pinny\notes.json` and trashed notes
+to `%LOCALAPPDATA%\Pinny\trash.json`. Changes save 500 ms after the last edit,
+layout change, or stack change, and again when quitting. The Go app reads
+notes saved by the earlier WPF version in the same folder. When upgrading
+from the single-note version, Pinny loads the old `note.json` if
+`notes.json` does not exist and keeps the original file as a backup. If a
+saved position is off-screen after a monitor change, Pinny moves that
+window back into view.
 
 ### Choose a notes folder
 
@@ -37,9 +91,17 @@ Changing the environment variable or command-line option does not copy existing 
 
 ### Export and import
 
-Choose **⋯ → Export notes...** to save one readable JSON backup containing all open notes and Trash. It preserves each note's text, ID, position, size, pin state, and theme, including current edits. The backup has `Version`, `Notes`, and `Trash` fields.
+Choose **⋯ → Export notes...** to save one readable JSON backup of your open
+notes and Trash. It includes current edits, note titles and dates, window
+settings, stack names and order, and saved stack return positions. The backup
+has `Version`, `Notes`, and `Trash` fields. For a full move to another PC
+with capture sync, see [sync recovery](docs/SYNC.md#local-representation-and-recovery).
 
-Choose **⋯ → Import notes...** to add a backup to your current collection. Existing notes and Trash are kept, and conflicting note IDs are replaced with new IDs. The importer also accepts a plain `notes.json` array from earlier versions. Invalid files are rejected before changing the collection. Imported window positions are moved into view if needed on the current computer.
+Choose **⋯ → Import notes...** to add a backup to your current collection.
+Conflicting note IDs get new IDs, and imported stacks open as separate groups
+with their saved order. The importer also accepts a plain `notes.json` array
+from earlier versions. Invalid files are rejected before changing the
+collection. Imported window positions are moved into view if needed.
 
 ## Requirements
 
@@ -102,6 +164,8 @@ workflows are intentionally disabled to avoid using GitHub compute.
 ## Project layout
 
 - `Pinny.Go/main.go`: active Win32 note windows, controls, and save coordination.
+- `Pinny.Go/notes_view.go`: All notes list, dates, and read-only preview.
+- `Pinny.Go/stacks.go`: grouped windows, note switching, and ordering.
 - `Pinny.Go/storage.go`: active JSON storage and single-note migration.
 - `Pinny.Go/Pinny.ico`: active app icon.
 - `Build-Pinny.ps1`: main Go release build with icon.
@@ -118,17 +182,18 @@ workflows are intentionally disabled to avoid using GitHub compute.
 
 ## Capture and sync
 
-The optional website, Cloudflare Worker and D1 inbox send new notes/todos to the
-Windows client. Configure the endpoint and desktop app credential using
+The optional capture PWA, Cloudflare Worker and D1 inbox send new notes and
+todos to the Windows client. Configure the endpoint and desktop app credential using
 **⋯ → Configure sync...** and a private JSON file; see [setup](docs/SYNC.md).
 Unconfigured installations make no network requests.
 
 **⋯ → Automatic sync** defaults on and checks at startup and every 15 minutes.
 Uncheck it to disable both startup and scheduled sync. **Sync now** remains
-available. Requests do not block editing; incoming items stay in the cloud until
-saved locally. Todos become editable `[ ]`/`[x]` text notes. Local notes are not
-uploaded. PWA, native mobile apps and two-way editing are deferred. See
-[cloud commands](cloud/README.md) and [API/recovery](docs/SYNC.md).
+available. Requests run while you edit. Each capture arrives as a standalone
+note and appears in **All notes**. **Created** uses the time the Worker accepted
+the submission. Todos become editable `[ ]`/`[x]` text notes. Sync is one-way
+from the capture inbox to Windows. See [PWA setup and offline retry](cloud/README.md#install-and-capture-offline)
+and [API and recovery](docs/SYNC.md).
 
 ## Performance experiments
 

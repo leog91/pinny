@@ -112,6 +112,20 @@ func prepareImport(backup notesBackup, existing, deleted []noteState) (notesBack
 	}
 	backup.Notes = append([]noteState(nil), backup.Notes...)
 	backup.Trash = append([]noteState(nil), backup.Trash...)
+	stackIDs := make(map[string]string)
+	importStackID := func(id string) (string, error) {
+		if id == "" {
+			return "", nil
+		}
+		if mapped := stackIDs[id]; mapped != "" {
+			return mapped, nil
+		}
+		mapped, err := newNoteID()
+		if err == nil {
+			stackIDs[id] = mapped
+		}
+		return mapped, err
+	}
 	for _, group := range [][]noteState{backup.Notes, backup.Trash} {
 		for i := range group {
 			if group[i].ID == "" || used[group[i].ID] {
@@ -122,6 +136,20 @@ func prepareImport(backup notesBackup, existing, deleted []noteState) (notesBack
 				group[i].ID = id
 			}
 			used[group[i].ID] = true
+			if membership := group[i].Stack; membership != nil {
+				id, err := importStackID(membership.ID)
+				if err != nil {
+					return backup, err
+				}
+				group[i].Stack = &stackMembership{ID: id, Name: membership.Name, Active: membership.Active}
+			}
+			if position := group[i].ReturnTo; position != nil {
+				id, err := importStackID(position.ID)
+				if err != nil {
+					return backup, err
+				}
+				group[i].ReturnTo = &stackPosition{ID: id, Name: position.Name, Index: position.Index}
+			}
 		}
 	}
 	return backup, nil
@@ -228,11 +256,9 @@ func addImportedNotes(backup notesBackup) error {
 			call(destroyWindow, handle)
 		}
 	}
-	for _, state := range backup.Notes {
-		if err := showSavedNote(state); err != nil {
-			rollbackWindows()
-			return err
-		}
+	if err := showSavedNotes(backup.Notes); err != nil {
+		rollbackWindows()
+		return err
 	}
 	updated := append(append([]noteState(nil), trash...), backup.Trash...)
 	if err := saveTrash(dataDir, updated); err != nil {

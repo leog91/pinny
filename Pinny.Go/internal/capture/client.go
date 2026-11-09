@@ -46,6 +46,7 @@ type Item struct {
 	Text      string `json:"text"`
 	Title     string `json:"title"`
 	Completed bool   `json:"completed"`
+	CreatedAt string `json:"createdAt,omitempty"`
 }
 
 func (i Item) Valid() bool {

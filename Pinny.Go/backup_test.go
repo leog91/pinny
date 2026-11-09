@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func sampleNote(id string) noteState {
@@ -16,6 +17,8 @@ func sampleNote(id string) noteState {
 func TestBackupRoundTripAndLegacyImport(t *testing.T) {
 	dir := t.TempDir()
 	open, deleted := []noteState{sampleNote("open")}, []noteState{sampleNote("deleted")}
+	open[0].noteDates = initialNoteDates(time.Date(2026, 1, 9, 12, 0, 0, 0, time.UTC))
+	deleted[0].noteDates = open[0].noteDates
 	path := filepath.Join(dir, "backup.json")
 	if err := writeBackup(path, open, deleted); err != nil {
 		t.Fatal(err)
@@ -27,7 +30,8 @@ func TestBackupRoundTripAndLegacyImport(t *testing.T) {
 	if got.Version != 1 || !reflect.DeepEqual(got.Notes, open) || !reflect.DeepEqual(got.Trash, deleted) {
 		t.Fatalf("round trip lost note state: %+v", got)
 	}
-	if err := saveNotes(dir, open); err != nil {
+	legacyNotes := []noteState{sampleNote("legacy")}
+	if err := saveNotes(dir, legacyNotes); err != nil {
 		t.Fatal(err)
 	}
 	legacy, err := os.ReadFile(filepath.Join(dir, "notes.json"))
@@ -41,7 +45,7 @@ func TestBackupRoundTripAndLegacyImport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(got.Notes, open) || len(got.Trash) != 0 {
+	if !reflect.DeepEqual(got.Notes, legacyNotes) || len(got.Trash) != 0 {
 		t.Fatalf("legacy array import failed: %+v", got)
 	}
 }

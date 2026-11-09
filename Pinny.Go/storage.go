@@ -9,20 +9,52 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
 // The field names and types match the JSON used by the C# Pinny builds.
 type noteState struct {
-	ID       string  `json:"Id"`
-	Text     string  `json:"Text"`
-	Title    string  `json:"Title,omitempty"`
-	Left     float64 `json:"Left"`
-	Top      float64 `json:"Top"`
-	Width    float64 `json:"Width"`
-	Height   float64 `json:"Height"`
-	IsPinned bool    `json:"IsPinned"`
-	Theme    string  `json:"Theme"`
+	ID       string           `json:"Id"`
+	Text     string           `json:"Text"`
+	Title    string           `json:"Title,omitempty"`
+	Left     float64          `json:"Left"`
+	Top      float64          `json:"Top"`
+	Width    float64          `json:"Width"`
+	Height   float64          `json:"Height"`
+	IsPinned bool             `json:"IsPinned"`
+	Theme    string           `json:"Theme"`
+	Stack    *stackMembership `json:"Stack,omitempty"`
+	ReturnTo *stackPosition   `json:"ReturnToStack,omitempty"`
+	noteDates
+}
+
+type noteDates struct {
+	CreatedAt  *time.Time `json:"CreatedAt,omitempty"`
+	ModifiedAt *time.Time `json:"ModifiedAt,omitempty"`
+}
+
+func initialNoteDates(at time.Time) noteDates {
+	if at.IsZero() {
+		return noteDates{}
+	}
+	utc := at.UTC()
+	return noteDates{CreatedAt: &utc, ModifiedAt: &utc}
+}
+
+func (dates *noteDates) markModified() {
+	now := time.Now().UTC()
+	dates.ModifiedAt = &now
+}
+
+type stackMembership struct {
+	ID, Name string
+	Active   bool `json:"Active,omitempty"`
+}
+
+type stackPosition struct {
+	ID, Name string
+	Index    int
 }
 
 func newNoteID() (string, error) {

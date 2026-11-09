@@ -60,7 +60,9 @@ func TestSyncWithLiveNotes(t *testing.T) {
 		t.Fatal(err)
 	}
 	localWindow := windowOrder[0]
-	item := capture.Item{ID: "12345678-1234-4234-8234-123456789abc", Kind: "todo", Text: "Incoming test", Title: "Capture"}
+	created := time.Date(2026, 1, 9, 12, 30, 0, 123000000, time.UTC)
+	item := capture.Item{ID: "12345678-1234-4234-8234-123456789abc", Kind: "todo", Text: "Incoming test", Title: "Capture",
+		CreatedAt: created.Format(time.RFC3339Nano)}
 	var gets, acks atomic.Int32
 	var delivered atomic.Bool
 	started, release := make(chan struct{}, 1), make(chan struct{})
@@ -151,6 +153,10 @@ func TestSyncWithLiveNotes(t *testing.T) {
 	saved, err := loadNotes(dataDir)
 	if err != nil || saved[0].Text != "Edited during request" || saved[1].Text != "[ ] Incoming test" {
 		t.Fatal("incoming batch overwrote edits or todo text")
+	}
+	if saved[1].CreatedAt == nil || !saved[1].CreatedAt.Equal(created) ||
+		saved[1].ModifiedAt == nil || !saved[1].ModifiedAt.Equal(created) {
+		t.Fatal("incoming note did not retain the cloud submission date")
 	}
 	// Lost cloud ack / restart / permanent local deletion cannot recreate a receipt.
 	call(destroyWindow, windowOrder[1])

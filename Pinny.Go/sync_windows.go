@@ -350,8 +350,10 @@ func applyIncoming(endpoint string, items []capture.Item) error {
 	// Never consider a failed window creation delivered. On partial creation, save
 	// receipts only for successful editors; the entire cloud batch stays pending.
 	for _, item := range fresh {
+		// Older inbox responses can omit the timestamp.
+		created, _ := time.Parse(time.RFC3339Nano, item.CreatedAt)
 		if err := showNote(initialNote{id: capture.NoteID(endpoint, item.ID), text: item.NoteText(), title: item.Title,
-			x: -2147483648, y: -2147483648, width: 320, height: 320, theme: "Light"}); err != nil {
+			x: -2147483648, y: -2147483648, width: 320, height: 320, theme: "Light", dates: initialNoteDates(created)}); err != nil {
 			for id := range next {
 				if !receipts[id] && !existing[id] {
 					delete(next, id)

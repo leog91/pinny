@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strconv"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -38,6 +39,7 @@ const (
 	roseID      = 17
 	mintID      = 18
 	lavenderID  = 19
+	allNotesID  = 20
 
 	wmDestroy       = 0x0002
 	wmMove          = 0x0003
@@ -125,6 +127,8 @@ type palette struct {
 type note struct {
 	edit, menu       uintptr
 	colorMenu        uintptr
+	stackMenu        uintptr
+	stackTargets     []uintptr
 	titleEdit        uintptr
 	title            string
 	renameActive     bool
@@ -135,12 +139,19 @@ type note struct {
 	loading          bool
 	hovered, pressed int
 	scrollbar        bool
+	stack            *noteStack
+	returnTo         *stackPosition
+	renamingStack    bool
+	dates            noteDates
 }
 type initialNote struct {
 	x, y, width, height int32
 	id                  string
 	text, theme, title  string
 	pinned              bool
+	stack               *noteStack
+	returnTo            *stackPosition
+	dates               noteDates
 }
 
 var (
@@ -350,6 +361,9 @@ func run(count int) error {
 	if err := registerTrashViewerClass(instance, largeIcon, smallIcon); err != nil {
 		return err
 	}
+	if err := registerNotesViewerClass(instance, largeIcon, smallIcon); err != nil {
+		return err
+	}
 	palettes["Light"] = makePalette(255, 255, 255, 244, 245, 247, 200, 205, 211, 225, 229, 235, 32, 35, 40, 85, 91, 99)
 	palettes["Dark"] = makePalette(36, 39, 44, 48, 52, 59, 76, 84, 94, 67, 73, 82, 232, 234, 237, 189, 197, 205)
 	palettes["Paper"] = makePalette(255, 248, 230, 235, 218, 183, 198, 177, 133, 222, 201, 161, 62, 51, 39, 107, 88, 59)
@@ -372,13 +386,11 @@ func run(count int) error {
 	}()
 
 	if len(saved) != 0 {
-		for _, state := range saved {
-			if err := showSavedNote(state); err != nil {
-				return err
-			}
+		if err := showSavedNotes(saved); err != nil {
+			return err
 		}
 	} else if count == 0 {
-		if err := showNote(initialNote{width: 320, height: 320, theme: "Light", x: -2147483648, y: -2147483648}); err != nil {
+		if err := showNote(initialNote{width: 320, height: 320, theme: "Light", x: -2147483648, y: -2147483648, dates: initialNoteDates(time.Now())}); err != nil {
 			return err
 		}
 		queueSave(windowOrder[0])
@@ -408,6 +420,9 @@ func run(count int) error {
 	return nil
 }
 func showSavedNote(state noteState) error {
+	return showNote(savedNoteInput(state))
+}
+func savedNoteInput(state noteState) initialNote {
 	theme := state.Theme
 	if _, ok := palettes[theme]; !ok {
 		theme = "Light"
@@ -426,10 +441,11 @@ func showSavedNote(state noteState) error {
 	if math.IsNaN(state.Top) || math.IsInf(state.Top, 0) {
 		y = -2147483648
 	}
-	return showNote(initialNote{
+	return initialNote{
 		id: state.ID, x: x, y: y, width: width, height: height,
 		text: state.Text, theme: theme, title: state.Title, pinned: state.IsPinned,
-	})
+		returnTo: state.ReturnTo, dates: state.noteDates,
+	}
 }
 func showNote(input initialNote) error {
 	if input.id == "" {
@@ -459,11 +475,13 @@ func showNote(input initialNote) error {
 	if hwnd == 0 {
 		return fmt.Errorf("could not create note window")
 	}
-	n := &note{id: input.id, theme: input.theme, title: cleanTitle(input.title), pinned: input.pinned, loading: true}
+	n := &note{id: input.id, theme: input.theme, title: cleanTitle(input.title), pinned: input.pinned,
+		loading: true, stack: input.stack, returnTo: input.returnTo, dates: input.dates}
 	windows[hwnd] = n
 	updateWindowTitle(hwnd, n)
 	windowOrder = append(windowOrder, hwnd)
 	n.menu = call(createPopupMenu)
+	call(appendMenu, n.menu, 0, allNotesID, uintptr(unsafe.Pointer(wide("All notes..."))))
 	call(appendMenu, n.menu, 0, renameID, uintptr(unsafe.Pointer(wide("Rename note..."))))
 	call(appendMenu, n.menu, mfSeparator, 0, 0)
 	n.colorMenu = call(createPopupMenu)
@@ -482,6 +500,8 @@ func showNote(input initialNote) error {
 	call(appendMenu, n.menu, 0, locationID, uintptr(unsafe.Pointer(wide("Choose notes folder..."))))
 	appendSyncMenu(n)
 	call(appendMenu, n.menu, mfSeparator, 0, 0)
+	n.stackMenu = call(createPopupMenu)
+	call(appendMenu, n.menu, mfPopup, n.stackMenu, uintptr(unsafe.Pointer(wide("Stacks"))))
 	call(appendMenu, n.menu, 0, quitID, uintptr(unsafe.Pointer(wide("Quit Pinny (keep notes)"))))
 	initialText := syscall.StringToUTF16(input.text)
 	n.edit = call(createWindow, 0, uintptr(unsafe.Pointer(wide("EDIT"))),
@@ -507,6 +527,12 @@ func showNote(input initialNote) error {
 	}
 	call(sendMessage, n.titleEdit, wmSetFont, font, 1)
 	call(sendMessage, n.titleEdit, emLimitText, 100, 0)
+	if n.stack != nil {
+		if err := createStackList(hwnd, n); err != nil {
+			call(destroyWindow, hwnd)
+			return err
+		}
+	}
 	resizeEdit(hwnd, n)
 	call(showScrollBar, n.edit, 1, 0)
 	updateScrollbar(n)
@@ -517,6 +543,7 @@ func showNote(input initialNote) error {
 	call(updateWindow, hwnd)
 	call(setFocus, n.edit)
 	n.loading = false
+	queueNotesViewerRefresh()
 	return nil
 }
 func snapshotNotes(exclude uintptr) ([]noteState, error) {
@@ -529,19 +556,11 @@ func snapshotNotes(exclude uintptr) ([]noteState, error) {
 		if n == nil || n.edit == 0 {
 			continue
 		}
-		var bounds rect
-		if call(getWindowRect, hwnd, uintptr(unsafe.Pointer(&bounds))) == 0 {
-			return nil, fmt.Errorf("could not read note position")
+		states, err := snapshotWindow(hwnd, n)
+		if err != nil {
+			return nil, err
 		}
-		length := int(call(getWindowTextLength, n.edit))
-		buffer := make([]uint16, length+1)
-		call(getWindowText, n.edit, uintptr(unsafe.Pointer(&buffer[0])), uintptr(len(buffer)))
-		notes = append(notes, noteState{
-			ID: n.id, Text: syscall.UTF16ToString(buffer), Title: currentTitle(n),
-			Left: float64(bounds.left), Top: float64(bounds.top),
-			Width: float64(bounds.right - bounds.left), Height: float64(bounds.bottom - bounds.top),
-			IsPinned: n.pinned, Theme: n.theme,
-		})
+		notes = append(notes, states...)
 	}
 	return notes, nil
 }
@@ -553,6 +572,9 @@ func saveAllExcept(exclude uintptr) error {
 	if err != nil {
 		return err
 	}
+	return saveOpenNotes(notes)
+}
+func saveOpenNotes(notes []noteState) error {
 	if err := saveNotes(dataDir, notes); err != nil {
 		return err
 	}
@@ -577,10 +599,14 @@ func stopSaveTimer() {
 	}
 }
 func queueSave(hwnd uintptr) {
-	if !persistenceEnabled || quitting {
+	if quitting {
 		return
 	}
 	if n := windows[hwnd]; n == nil || n.loading {
+		return
+	}
+	queueNotesViewerRefresh()
+	if !persistenceEnabled {
 		return
 	}
 	stopSaveTimer()
@@ -598,16 +624,22 @@ func resizeEdit(hwnd uintptr, n *note) {
 	}
 	var client rect
 	call(getClientRect, hwnd, uintptr(unsafe.Pointer(&client)))
-	width, height := client.right-2, client.bottom-headerH-10
+	left := int32(1)
+	if n.stack != nil && n.stack.list != 0 {
+		listWidth := clamp(client.right/3, 70, 240)
+		call(moveWindow, n.stack.list, 1, headerH+2, uintptr(listWidth), uintptr(clamp(client.bottom-headerH-4, 1, 10000)), 1)
+		left = listWidth + 2
+	}
+	width, height := client.right-left-1, client.bottom-headerH-10
 	if width < 1 {
 		width = 1
 	}
 	if height < 1 {
 		height = 1
 	}
-	call(moveWindow, n.edit, 1, headerH+2, uintptr(width), uintptr(height), 1)
+	call(moveWindow, n.edit, uintptr(left), headerH+2, uintptr(width), uintptr(height), 1)
 	if n.titleEdit != 0 {
-		call(moveWindow, n.titleEdit, 10, 6, uintptr(clamp(client.right-154, 1, 10000)), 22, 1)
+		call(moveWindow, n.titleEdit, 10, 6, uintptr(clamp(client.right-headerButtonsWidth(n)-10, 1, 10000)), 22, 1)
 	}
 	updateScrollbar(n)
 }
@@ -647,6 +679,10 @@ func buttonAt(hwnd, lp uintptr) int {
 		return 2
 	case x >= area.right-144:
 		return 1
+	case windows[hwnd].stack != nil && x >= area.right-144-stackArrowWidth:
+		return stackDownButton
+	case windows[hwnd].stack != nil && x >= area.right-headerButtonsWidth(windows[hwnd]):
+		return stackUpButton
 	default:
 		return 0
 	}
@@ -756,7 +792,14 @@ func wndProc(hwnd, message, wp, lp uintptr) uintptr {
 			finishRename(hwnd, n, true)
 		case id == renameID:
 			beginRename(hwnd, n)
+		case id == stackListID && notification == 1 && n.stack != nil:
+			selectStackNote(hwnd, n, int(call(sendMessage, n.stack.list, lbGetCurSel, 0, 0)))
+		case id == editID && notification == 0x200 && n.stack != nil && !n.loading:
+			refreshStackLabel(n)
 		case id == editID && notification == 0x300:
+			if !n.loading {
+				n.dates.markModified()
+			}
 			hideLinkHint(n)
 			call(invalidateRect, n.edit, 0, 0)
 			updateScrollbar(n)
@@ -771,6 +814,8 @@ func wndProc(hwnd, message, wp, lp uintptr) uintptr {
 			restoreLastDeleted()
 		case id == viewTrashID:
 			showTrashViewer()
+		case id == allNotesID:
+			showNotesViewer()
 		case id == quitID:
 			quit()
 		case id == exportID:
@@ -794,6 +839,8 @@ func wndProc(hwnd, message, wp, lp uintptr) uintptr {
 			call(invalidateRect, n.edit, 0, 1)
 			call(invalidateRect, hwnd, 0, 0)
 			queueSave(hwnd)
+		default:
+			handleStackCommand(hwnd, n, id)
 		}
 		return 0
 	case wmTimer:
@@ -805,6 +852,11 @@ func wndProc(hwnd, message, wp, lp uintptr) uintptr {
 			return 0
 		}
 	case wmCtlColorEdit:
+		p := palettes[n.theme]
+		call(setTextColor, wp, uintptr(p.inkColor))
+		call(setBkColor, wp, uintptr(p.surfaceColor))
+		return p.surface
+	case 0x0134: // WM_CTLCOLORLISTBOX
 		p := palettes[n.theme]
 		call(setTextColor, wp, uintptr(p.inkColor))
 		call(setBkColor, wp, uintptr(p.surfaceColor))
@@ -830,16 +882,25 @@ func wndProc(hwnd, message, wp, lp uintptr) uintptr {
 		if len(windows) == 0 {
 			call(postQuitMessage, 0)
 		}
+		queueNotesViewerRefresh()
 		return 0
 	}
 	return call(defWindowProc, hwnd, message, wp, lp)
 }
 func newNote(hwnd uintptr, n *note) {
+	if n.stack != nil {
+		newStackNote(hwnd, n)
+		return
+	}
+	newStandaloneNote(hwnd, n)
+}
+func newStandaloneNote(hwnd uintptr, n *note) {
 	var bounds rect
 	call(getWindowRect, hwnd, uintptr(unsafe.Pointer(&bounds)))
 	if err := showNote(initialNote{
 		x: bounds.left + 32, y: bounds.top + 32, width: bounds.right - bounds.left,
 		height: bounds.bottom - bounds.top, theme: n.theme, pinned: n.pinned,
+		dates: initialNoteDates(time.Now()),
 	}); err != nil {
 		showSaveError(err)
 		return
@@ -877,10 +938,28 @@ func moveToTrash(hwnd uintptr) {
 	}
 	var current noteState
 	found := false
-	for _, state := range states {
+	for i, state := range states {
 		if state.ID == n.id {
 			current, found = state, true
+			states = append(states[:i], states[i+1:]...)
 			break
+		}
+	}
+	if n.stack != nil {
+		current.Stack = nil
+		current.ReturnTo = &stackPosition{ID: n.stack.id, Name: n.stack.name, Index: n.stack.active}
+		if len(n.stack.notes) > 1 {
+			next := min(n.stack.active+1, len(n.stack.notes)-1)
+			if next == n.stack.active {
+				next--
+			}
+			nextID := n.stack.notes[next].ID
+			for i := range states {
+				if states[i].ID == nextID {
+					states[i].Stack.Active = true
+					break
+				}
+			}
 		}
 	}
 	if !found {
@@ -901,8 +980,13 @@ func moveToTrash(hwnd uintptr) {
 	trash = updated
 	refreshTrashViewer()
 	stopSaveTimer()
-	if err := saveAllExcept(hwnd); err != nil {
+	if err := saveOpenNotes(states); err != nil {
 		showSaveError(err)
+		return
+	}
+	if n.stack != nil && len(n.stack.notes) > 1 {
+		finishRename(hwnd, n, false)
+		removeStackNote(hwnd, n)
 		return
 	}
 	call(destroyWindow, hwnd)
@@ -924,8 +1008,13 @@ func restoreTrashAt(index int) {
 	}
 	selected := trash[index]
 	updated := append(append([]noteState(nil), trash[:index]...), trash[index+1:]...)
-	for _, n := range windows {
-		if n.id == selected.ID {
+	states, err := snapshotNotes(0)
+	if err != nil {
+		showSaveError(err)
+		return
+	}
+	for _, state := range states {
+		if state.ID == selected.ID {
 			if err := saveTrash(dataDir, updated); err != nil {
 				showSaveError(err)
 				return
@@ -961,6 +1050,7 @@ func clickButton(hwnd uintptr, n *note, button int) {
 	case 2:
 		togglePin(hwnd, n)
 	case 3:
+		refreshStackMenu(hwnd, n)
 		var area rect
 		call(getClientRect, hwnd, uintptr(unsafe.Pointer(&area)))
 		pt := point{area.right - 72, headerH}
@@ -972,6 +1062,10 @@ func clickButton(hwnd uintptr, n *note, button int) {
 		}
 	case 4:
 		quit()
+	case stackUpButton:
+		moveStackNote(hwnd, n, n.stack.active-1)
+	case stackDownButton:
+		moveStackNote(hwnd, n, n.stack.active+1)
 	}
 }
 func quit() {
@@ -981,6 +1075,9 @@ func quit() {
 		return
 	}
 	quitting = true
+	if notesViewer.hwnd != 0 {
+		call(destroyWindow, notesViewer.hwnd)
+	}
 	handles := make([]uintptr, 0, len(windows))
 	handles = append(handles, windowOrder...)
 	for _, hwnd := range handles {
@@ -1009,11 +1106,14 @@ func paintHeader(hwnd uintptr, n *note) {
 	call(setBkMode, dc, 1)
 	oldFont := call(selectObject, dc, font)
 	defer call(selectObject, dc, oldFont)
-	title := rect{10, 1, bounds.right - 144, headerH - 1}
+	title := rect{10, 1, bounds.right - headerButtonsWidth(n), headerH - 1}
 	if title.right < 10 {
 		title.right = 10
 	}
-	text(dc, displayTitle(n.title), title, dtVCenter|dtSingleLine|0x8000|0x0800, p.mutedColor) // ellipsis, literal ampersands
+	text(dc, noteWindowTitle(n), title, dtVCenter|dtSingleLine|0x8000|0x0800, p.mutedColor) // ellipsis, literal ampersands
+	if n.stack != nil {
+		paintStackArrows(dc, bounds.right, n, p)
+	}
 	labels := []string{"+", "◇", "⋯", "×"}
 	if n.pinned {
 		labels[1] = "◆"

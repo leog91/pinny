@@ -30,3 +30,6 @@ Benchmarks/.data/
 **/sync.local.json
 **/sync-pending.json
 **/sync-receipts.json
+
+# Personal notes exports
+**/Pinny-backup.json

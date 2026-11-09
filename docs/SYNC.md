@@ -118,9 +118,12 @@ forwarding credentials. `cloud/test/` contains runnable contract examples.
 
 ## Local representation and recovery
 
-- A submission creates a new plain-text note. Todos use `[ ] ` or `[x] ` before
-  text: deliberately editable text, **not** a new task widget/status model. Local
-  checkbox-text edits are not sent to the cloud.
+- A submission creates a standalone plain-text note, visible under
+  **⋯ → All notes...**. The Worker's `createdAt` sets the initial creation and
+  modification times. Text edits and note renames update the modification
+  time locally. Stack membership and order are desktop state.
+- Todos use editable `[ ] ` or `[x] ` prefixes. Checkbox-text edits stay on
+  the desktop.
 - Local IDs are deterministic UUID-shaped SHA-256-derived values, namespaced by
   Worker origin and submission UUID. Defaults are a visible 320×320 window, Light
   theme, unpinned. Geometry, pin state and theme remain local and absent from API.
@@ -138,10 +141,12 @@ forwarding credentials. `cloud/test/` contains runnable contract examples.
   Receipt corruption fails closed, rather than guessing.
 - Folder switching copies receipts, notes and Trash, leaving originals. Export
   cannot overwrite active sync files or credentials. Existing arrays, legacy
-  single-note files and version-1 backups retain their format. Backups contain
-  notes/Trash, **not credentials or the receipt ledger**. For full machine sync
-  recovery privately preserve the ledger too. A notes-only restore deduplicates
-  IDs still present but cannot remember permanently deleted deliveries.
+  single-note files and version-1 backups retain their format. A backup carries
+  notes and Trash with their optional dates and stack metadata. Import remaps
+  imported stack IDs and any colliding note IDs. For full machine sync recovery,
+  privately preserve the separate sync configuration and receipt ledger
+  alongside the original notes folder. A notes-only restore can recognize
+  deliveries whose original IDs are still present.
 
 Keep one process per notes folder; simultaneous JSON writers are unsupported.
 Do not remove receipt files while cloud items may be pending. Changing Worker
