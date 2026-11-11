@@ -358,22 +358,6 @@ func headerButtonsWidth(n *note) int32 {
 	return baseHeaderWidth
 }
 
-func paintStackArrows(dc uintptr, right int32, n *note, p palette) {
-	left := right - headerButtonsWidth(n)
-	for i, label := range []string{"↑", "↓"} {
-		button := rect{left, 1, left + stackArrowWidth, headerH - 1}
-		color := p.inkColor
-		target := n.stack.active + 2*i - 1
-		if target < 0 || target >= len(n.stack.notes) {
-			color = p.mutedColor
-		} else if n.hovered == stackUpButton+i {
-			call(fillRect, dc, uintptr(unsafe.Pointer(&button)), p.hover)
-		}
-		text(dc, label, button, dtCenter|dtVCenter|dtSingleLine, color)
-		left += stackArrowWidth
-	}
-}
-
 func appendStackMenuItem(menu, id uintptr, label string) {
 	call(appendMenu, menu, 0, id, uintptr(unsafe.Pointer(wide(stdstrings.ReplaceAll(label, "&", "&&")))))
 }

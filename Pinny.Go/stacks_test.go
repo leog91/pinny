@@ -81,11 +81,11 @@ func TestStacksWithLiveNotes(t *testing.T) {
 		call(sendMessage, hwnd, wmLButtonDown, 1, point)
 		call(sendMessage, hwnd, wmLButtonUp, 0, point)
 	}
-	clickHeader(first, 162) // Minimize this stack only.
+	clickHeader(first, 126) // Minimize this stack only.
 	if call(isIconic, first) == 0 || call(isIconic, loose) != 0 {
 		t.Fatal("single-note minimize affected the wrong windows")
 	}
-	clickHeader(loose, 198) // Minimize all, including an already minimized stack.
+	clickHeader(loose, 90) // Minimize all, including an already minimized stack.
 	for _, hwnd := range windowOrder {
 		if call(isIconic, hwnd) == 0 {
 			t.Fatal("minimize all left a note visible")
@@ -98,8 +98,12 @@ func TestStacksWithLiveNotes(t *testing.T) {
 	if err := saveAllExcept(0); err != nil {
 		t.Fatal(err)
 	}
+	call(showWindow, loose, 9) // Restore one note from the taskbar first.
+	clickHeader(loose, 54)     // Restore all from its header, including the pinned note.
 	for _, hwnd := range windowOrder {
-		call(showWindow, hwnd, 9) // SW_RESTORE
+		if call(isIconic, hwnd) != 0 {
+			t.Fatal("restore all left a note minimized")
+		}
 	}
 	afterRestore, err := snapshotNotes(0)
 	if err != nil || !reflect.DeepEqual(beforeMinimize, afterRestore) {
@@ -108,8 +112,8 @@ func TestStacksWithLiveNotes(t *testing.T) {
 	call(setWindowText, n.edit, uintptr(unsafe.Pointer(wide("edited three"))))
 	var client rect
 	call(getClientRect, first, uintptr(unsafe.Pointer(&client)))
-	up := packedPoint(point{client.right - baseHeaderWidth - 36, 16})
-	down := packedPoint(point{client.right - baseHeaderWidth - 12, 16})
+	up := packedPoint(point{client.right - 144 - 36, 16})
+	down := packedPoint(point{client.right - 144 - 12, 16})
 	for _, arrow := range []uintptr{up, down} {
 		call(sendMessage, first, wmLButtonDown, 1, arrow)
 		call(sendMessage, first, wmLButtonUp, 0, arrow)

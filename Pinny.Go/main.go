@@ -42,9 +42,11 @@ const (
 	allNotesID        = 20
 	minimizeID        = 21
 	minimizeAllID     = 22
+	restoreAllID      = 23
 	minimizeButton    = 7
 	minimizeAllButton = 8
-	baseHeaderWidth   = 216
+	restoreAllButton  = 9
+	baseHeaderWidth   = 252
 
 	wmDestroy       = 0x0002
 	wmMove          = 0x0003
@@ -493,6 +495,7 @@ func showNote(input initialNote) error {
 	call(appendMenu, n.menu, 0, renameID, uintptr(unsafe.Pointer(wide("Rename note..."))))
 	call(appendMenu, n.menu, 0, minimizeID, uintptr(unsafe.Pointer(wide("Minimize this note"))))
 	call(appendMenu, n.menu, 0, minimizeAllID, uintptr(unsafe.Pointer(wide("Minimize all notes"))))
+	call(appendMenu, n.menu, 0, restoreAllID, uintptr(unsafe.Pointer(wide("Restore all notes"))))
 	call(appendMenu, n.menu, mfSeparator, 0, 0)
 	n.colorMenu = call(createPopupMenu)
 	for _, option := range noteColors {
@@ -680,26 +683,14 @@ func buttonAt(hwnd, lp uintptr) int {
 	if x < 0 || x >= area.right {
 		return 0
 	}
-	switch {
-	case x >= area.right-36:
-		return 4
-	case x >= area.right-72:
-		return 3
-	case x >= area.right-108:
-		return 2
-	case x >= area.right-144:
-		return 1
-	case x >= area.right-180:
-		return minimizeButton
-	case x >= area.right-baseHeaderWidth:
-		return minimizeAllButton
-	case windows[hwnd].stack != nil && x >= area.right-baseHeaderWidth-stackArrowWidth:
-		return stackDownButton
-	case windows[hwnd].stack != nil && x >= area.right-headerButtonsWidth(windows[hwnd]):
-		return stackUpButton
-	default:
-		return 0
+	left := area.right - headerButtonsWidth(windows[hwnd])
+	for _, button := range headerButtons(windows[hwnd]) {
+		if x >= left && x < left+button.width {
+			return button.id
+		}
+		left += button.width
 	}
+	return 0
 }
 func wndProc(hwnd, message, wp, lp uintptr) uintptr {
 	switch message {
@@ -834,6 +825,8 @@ func wndProc(hwnd, message, wp, lp uintptr) uintptr {
 			minimizeNote(hwnd)
 		case id == minimizeAllID:
 			minimizeAllNotes()
+		case id == restoreAllID:
+			restoreAllNotes(hwnd)
 		case id == trashID:
 			moveToTrash(hwnd)
 		case id == restoreID:
@@ -1079,7 +1072,7 @@ func clickButton(hwnd uintptr, n *note, button int) {
 		refreshStackMenu(hwnd, n)
 		var area rect
 		call(getClientRect, hwnd, uintptr(unsafe.Pointer(&area)))
-		pt := point{area.right - 72, headerH}
+		pt := point{area.right - headerButtonsWidth(n) + 72, headerH}
 		call(clientToScreen, hwnd, uintptr(unsafe.Pointer(&pt)))
 		call(setForeground, hwnd)
 		choice := call(trackPopupMenu, n.menu, tpmReturnCmd, uintptr(pt.x), uintptr(pt.y), 0, hwnd, 0)
@@ -1092,6 +1085,8 @@ func clickButton(hwnd uintptr, n *note, button int) {
 		minimizeNote(hwnd)
 	case minimizeAllButton:
 		minimizeAllNotes()
+	case restoreAllButton:
+		restoreAllNotes(hwnd)
 	case stackUpButton:
 		moveStackNote(hwnd, n, n.stack.active-1)
 	case stackDownButton:
@@ -1124,6 +1119,38 @@ func minimizeAllNotes() {
 	for _, hwnd := range windowOrder {
 		minimizeNote(hwnd)
 	}
+}
+
+func restoreAllNotes(owner uintptr) {
+	for _, hwnd := range windowOrder {
+		if call(isIconic, hwnd) != 0 {
+			call(showWindow, hwnd, 9) // SW_RESTORE preserves the previous size and position.
+		}
+		call(setWindowPos, hwnd, 0, 0, 0, 0, 0, swpNoMove|swpNoSize|swpNoActivate)
+	}
+	if windows[owner] != nil {
+		call(setForeground, owner)
+	}
+}
+
+type headerButton struct {
+	id    int
+	label string
+	width int32
+}
+
+// Painting and hit testing share the same order and widths.
+func headerButtons(n *note) []headerButton {
+	pin := "◇"
+	if n.pinned {
+		pin = "◆"
+	}
+	buttons := []headerButton{{1, "+", 36}, {2, pin, 36}, {3, "⋯", 36}}
+	if n.stack != nil {
+		buttons = append(buttons, headerButton{stackUpButton, "↑", stackArrowWidth}, headerButton{stackDownButton, "↓", stackArrowWidth})
+	}
+	return append(buttons, headerButton{minimizeButton, "−", 36}, headerButton{minimizeAllButton, "⇊", 36},
+		headerButton{restoreAllButton, "⇈", 36}, headerButton{4, "×", 36})
 }
 
 func quit() {
@@ -1169,26 +1196,33 @@ func paintHeader(hwnd uintptr, n *note) {
 		title.right = 10
 	}
 	text(dc, noteWindowTitle(n), title, dtVCenter|dtSingleLine|0x8000|0x0800, p.mutedColor) // ellipsis, literal ampersands
-	if n.stack != nil {
-		paintStackArrows(dc, bounds.right, n, p)
-	}
-	labels := []string{"⇊", "−", "+", "◇", "⋯", "×"}
-	buttons := []int{minimizeAllButton, minimizeButton, 1, 2, 3, 4}
-	if n.pinned {
-		labels[3] = "◆"
-	}
-	widths := []int32{36, 36, 36, 36, 36, 36}
-	left := bounds.right - baseHeaderWidth
-	for i, label := range labels {
-		button := rect{left, 1, left + widths[i], headerH - 1}
-		if n.hovered == buttons[i] {
+	left := bounds.right - headerButtonsWidth(n)
+	for _, control := range headerButtons(n) {
+		button := rect{left, 1, left + control.width, headerH - 1}
+		disabled := n.stack != nil && (control.id == stackUpButton && n.stack.active == 0 ||
+			control.id == stackDownButton && n.stack.active == len(n.stack.notes)-1)
+		if n.hovered == control.id && !disabled {
 			call(fillRect, dc, uintptr(unsafe.Pointer(&button)), p.hover)
 		}
 		color := p.inkColor
-		if buttons[i] == 4 {
+		switch control.id {
+		case minimizeButton, minimizeAllButton:
+			color = rgb(190, 125, 0)
+			if n.theme == "Dark" {
+				color = rgb(255, 195, 65)
+			}
+		case restoreAllButton:
+			color = rgb(30, 145, 75)
+			if n.theme == "Dark" {
+				color = rgb(65, 205, 115)
+			}
+		case 4:
 			color = rgb(220, 55, 55)
 		}
-		text(dc, label, button, dtCenter|dtVCenter|dtSingleLine, color)
-		left += widths[i]
+		if disabled {
+			color = p.mutedColor
+		}
+		text(dc, control.label, button, dtCenter|dtVCenter|dtSingleLine, color)
+		left += control.width
 	}
 }

@@ -32,7 +32,7 @@ On Windows x64, double-click `dist\Pinny.exe` after building it. The executable 
 - Click **+** in a standalone window to create another standalone note nearby. In a stack, **+** adds a note to that stack.
 - Drag a note's header to move it; drag an edge or corner to resize it.
 - Click the diamond to toggle always-on-top for the current window.
-- Click **−** to minimize the current note window, or **⇊** to minimize all note windows. Restore notes from the Windows taskbar. In a stack, minimizing affects the shared stack window. Both actions are also in the **⋯** menu.
+- Click the amber **−** to minimize the current note window, or amber **⇊** to minimize all note windows. Restore one note from the Windows taskbar, then click green **⇈** to restore all notes at their previous sizes and positions. In a stack, these actions affect the shared stack window. All three actions are also in the **⋯** menu. From right to left, the header controls are Close all, Restore all, Minimize all, Minimize one, stack Down/Up (when stacked), Menu, Pin, and New note.
 - Choose **⋯ → Note color** for Light, Dark, Paper, Soft yellow, Peach, Rose, Mint, or Lavender. A checkmark shows the current color; each note remembers its own selection.
 - Click **⋯** to browse all notes, manage stacks and Trash, import or export notes, or choose a notes folder.
 - Click the red **×**, choose **⋯ → Quit Pinny (keep notes)**, or close any note window from the taskbar to exit while keeping every note.
