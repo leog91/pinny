@@ -67,11 +67,49 @@ func TestStacksWithLiveNotes(t *testing.T) {
 		}
 	}
 	assertOrder("one", "two", "three")
+	// Exercise the actual header hit targets with a stack and a pinned note.
+	togglePin(loose, windows[loose])
+	beforeMinimize, err := snapshotNotes(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clickHeader := func(hwnd uintptr, offset int32) {
+		t.Helper()
+		var bounds rect
+		call(getClientRect, hwnd, uintptr(unsafe.Pointer(&bounds)))
+		point := packedPoint(point{bounds.right - offset, 16})
+		call(sendMessage, hwnd, wmLButtonDown, 1, point)
+		call(sendMessage, hwnd, wmLButtonUp, 0, point)
+	}
+	clickHeader(first, 162) // Minimize this stack only.
+	if call(isIconic, first) == 0 || call(isIconic, loose) != 0 {
+		t.Fatal("single-note minimize affected the wrong windows")
+	}
+	clickHeader(loose, 198) // Minimize all, including an already minimized stack.
+	for _, hwnd := range windowOrder {
+		if call(isIconic, hwnd) == 0 {
+			t.Fatal("minimize all left a note visible")
+		}
+	}
+	afterMinimize, err := snapshotNotes(0)
+	if err != nil || !reflect.DeepEqual(beforeMinimize, afterMinimize) {
+		t.Fatalf("minimizing changed saved notes or geometry: %v\nbefore: %+v\nafter: %+v", err, beforeMinimize, afterMinimize)
+	}
+	if err := saveAllExcept(0); err != nil {
+		t.Fatal(err)
+	}
+	for _, hwnd := range windowOrder {
+		call(showWindow, hwnd, 9) // SW_RESTORE
+	}
+	afterRestore, err := snapshotNotes(0)
+	if err != nil || !reflect.DeepEqual(beforeMinimize, afterRestore) {
+		t.Fatal("restoring did not preserve note contents and geometry")
+	}
 	call(setWindowText, n.edit, uintptr(unsafe.Pointer(wide("edited three"))))
 	var client rect
 	call(getClientRect, first, uintptr(unsafe.Pointer(&client)))
-	up := packedPoint(point{client.right - 180, 16})
-	down := packedPoint(point{client.right - 156, 16})
+	up := packedPoint(point{client.right - baseHeaderWidth - 36, 16})
+	down := packedPoint(point{client.right - baseHeaderWidth - 12, 16})
 	for _, arrow := range []uintptr{up, down} {
 		call(sendMessage, first, wmLButtonDown, 1, arrow)
 		call(sendMessage, first, wmLButtonUp, 0, arrow)

@@ -107,6 +107,11 @@ func snapshotWindow(hwnd uintptr, n *note) ([]noteState, error) {
 	if call(getWindowRect, hwnd, uintptr(unsafe.Pointer(&bounds))) == 0 {
 		return nil, fmt.Errorf("could not read note position")
 	}
+	if call(isIconic, hwnd) != 0 {
+		bounds = n.normalBounds
+	} else {
+		n.normalBounds = bounds
+	}
 	current := activeNoteState(n)
 	states := []noteState{current}
 	if stack := n.stack; stack != nil {
@@ -348,9 +353,9 @@ func paintStackDropLine(list uintptr, stack *noteStack, p palette) {
 
 func headerButtonsWidth(n *note) int32 {
 	if n.stack != nil {
-		return 144 + 2*stackArrowWidth
+		return baseHeaderWidth + 2*stackArrowWidth
 	}
-	return 144
+	return baseHeaderWidth
 }
 
 func paintStackArrows(dc uintptr, right int32, n *note, p palette) {

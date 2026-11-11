@@ -16,30 +16,35 @@ import (
 // The UI uses direct Win32 calls. Normal launches save notes as local JSON;
 // --notes remains an in-memory synthetic mode for manual comparison.
 const (
-	windowClass = "PinnyNativeNoteGo"
-	headerH     = 32
-	resizeEdge  = 6
-	editID      = 100
-	newID       = 1
-	pinID       = 2
-	trashID     = 3
-	quitID      = 4
-	lightID     = 5
-	darkID      = 6
-	paperID     = 7
-	restoreID   = 8
-	viewTrashID = 10
-	exportID    = 11
-	importID    = 12
-	locationID  = 13
-	renameID    = 14
-	titleID     = 101
-	yellowID    = 15
-	peachID     = 16
-	roseID      = 17
-	mintID      = 18
-	lavenderID  = 19
-	allNotesID  = 20
+	windowClass       = "PinnyNativeNoteGo"
+	headerH           = 32
+	resizeEdge        = 6
+	editID            = 100
+	newID             = 1
+	pinID             = 2
+	trashID           = 3
+	quitID            = 4
+	lightID           = 5
+	darkID            = 6
+	paperID           = 7
+	restoreID         = 8
+	viewTrashID       = 10
+	exportID          = 11
+	importID          = 12
+	locationID        = 13
+	renameID          = 14
+	titleID           = 101
+	yellowID          = 15
+	peachID           = 16
+	roseID            = 17
+	mintID            = 18
+	lavenderID        = 19
+	allNotesID        = 20
+	minimizeID        = 21
+	minimizeAllID     = 22
+	minimizeButton    = 7
+	minimizeAllButton = 8
+	baseHeaderWidth   = 216
 
 	wmDestroy       = 0x0002
 	wmMove          = 0x0003
@@ -125,6 +130,7 @@ type palette struct {
 	surfaceColor, inkColor, mutedColor uint32
 }
 type note struct {
+	normalBounds     rect
 	edit, menu       uintptr
 	colorMenu        uintptr
 	stackMenu        uintptr
@@ -163,6 +169,7 @@ var (
 	defWindowProc       = user32.NewProc("DefWindowProcW")
 	destroyWindow       = user32.NewProc("DestroyWindow")
 	showWindow          = user32.NewProc("ShowWindow")
+	isIconic            = user32.NewProc("IsIconic")
 	updateWindow        = user32.NewProc("UpdateWindow")
 	getMessage          = user32.NewProc("GetMessageW")
 	translateMessage    = user32.NewProc("TranslateMessage")
@@ -455,7 +462,7 @@ func showNote(input initialNote) error {
 			return fmt.Errorf("could not create note ID: %w", err)
 		}
 	}
-	width, height := clamp(input.width, 210, 10000), clamp(input.height, 120, 10000)
+	width, height := clamp(input.width, 340, 10000), clamp(input.height, 120, 10000)
 	sx := int32(call(getSystemMetrics, 76))
 	sy := int32(call(getSystemMetrics, 77))
 	sw := int32(call(getSystemMetrics, 78))
@@ -476,13 +483,16 @@ func showNote(input initialNote) error {
 		return fmt.Errorf("could not create note window")
 	}
 	n := &note{id: input.id, theme: input.theme, title: cleanTitle(input.title), pinned: input.pinned,
-		loading: true, stack: input.stack, returnTo: input.returnTo, dates: input.dates}
+		normalBounds: rect{x, y, x + width, y + height},
+		loading:      true, stack: input.stack, returnTo: input.returnTo, dates: input.dates}
 	windows[hwnd] = n
 	updateWindowTitle(hwnd, n)
 	windowOrder = append(windowOrder, hwnd)
 	n.menu = call(createPopupMenu)
 	call(appendMenu, n.menu, 0, allNotesID, uintptr(unsafe.Pointer(wide("All notes..."))))
 	call(appendMenu, n.menu, 0, renameID, uintptr(unsafe.Pointer(wide("Rename note..."))))
+	call(appendMenu, n.menu, 0, minimizeID, uintptr(unsafe.Pointer(wide("Minimize this note"))))
+	call(appendMenu, n.menu, 0, minimizeAllID, uintptr(unsafe.Pointer(wide("Minimize all notes"))))
 	call(appendMenu, n.menu, mfSeparator, 0, 0)
 	n.colorMenu = call(createPopupMenu)
 	for _, option := range noteColors {
@@ -520,7 +530,7 @@ func showNote(input initialNote) error {
 		return err
 	}
 	n.titleEdit = call(createWindow, 0, uintptr(unsafe.Pointer(wide("EDIT"))), 0,
-		wsChild|0x0080, 10, 6, uintptr(width-154), 22, hwnd, titleID, 0, 0) // ES_AUTOHSCROLL
+		wsChild|0x0080, 10, 6, uintptr(width-headerButtonsWidth(n)-10), 22, hwnd, titleID, 0, 0) // ES_AUTOHSCROLL
 	if n.titleEdit == 0 {
 		call(destroyWindow, hwnd)
 		return fmt.Errorf("could not create title editor")
@@ -679,7 +689,11 @@ func buttonAt(hwnd, lp uintptr) int {
 		return 2
 	case x >= area.right-144:
 		return 1
-	case windows[hwnd].stack != nil && x >= area.right-144-stackArrowWidth:
+	case x >= area.right-180:
+		return minimizeButton
+	case x >= area.right-baseHeaderWidth:
+		return minimizeAllButton
+	case windows[hwnd].stack != nil && x >= area.right-baseHeaderWidth-stackArrowWidth:
 		return stackDownButton
 	case windows[hwnd].stack != nil && x >= area.right-headerButtonsWidth(windows[hwnd]):
 		return stackUpButton
@@ -692,6 +706,9 @@ func wndProc(hwnd, message, wp, lp uintptr) uintptr {
 	case wmNcCalcSize, wmNcPaint:
 		// The client area and paintHeader own the entire frame. Native frame
 		// painting would cover the editor when the window gains or loses focus.
+		return 0
+	case wmGetMinMaxInfo:
+		(*minMaxInfo)(unsafe.Pointer(lp)).minTrackSize = point{340, 120}
 		return 0
 	case wmNcActivate:
 		// Preserve default activation handling without repainting the frame.
@@ -774,10 +791,15 @@ func wndProc(hwnd, message, wp, lp uintptr) uintptr {
 		}
 		return 0
 	case wmSize:
+		if call(isIconic, hwnd) != 0 {
+			return 0
+		}
+		rememberNoteBounds(hwnd, n)
 		resizeEdit(hwnd, n)
 		queueSave(hwnd)
 		return 0
 	case wmMove:
+		rememberNoteBounds(hwnd, n)
 		queueSave(hwnd)
 		return 0
 	case wmSetFocus:
@@ -808,6 +830,10 @@ func wndProc(hwnd, message, wp, lp uintptr) uintptr {
 			newNote(hwnd, n)
 		case id == pinID:
 			togglePin(hwnd, n)
+		case id == minimizeID:
+			minimizeNote(hwnd)
+		case id == minimizeAllID:
+			minimizeAllNotes()
 		case id == trashID:
 			moveToTrash(hwnd)
 		case id == restoreID:
@@ -1062,12 +1088,44 @@ func clickButton(hwnd uintptr, n *note, button int) {
 		}
 	case 4:
 		quit()
+	case minimizeButton:
+		minimizeNote(hwnd)
+	case minimizeAllButton:
+		minimizeAllNotes()
 	case stackUpButton:
 		moveStackNote(hwnd, n, n.stack.active-1)
 	case stackDownButton:
 		moveStackNote(hwnd, n, n.stack.active+1)
 	}
 }
+
+// Keep screen coordinates before Windows moves a minimized window off-screen.
+func rememberNoteBounds(hwnd uintptr, n *note) {
+	if call(isIconic, hwnd) == 0 {
+		var bounds rect
+		if call(getWindowRect, hwnd, uintptr(unsafe.Pointer(&bounds))) != 0 {
+			n.normalBounds = bounds
+		}
+	}
+}
+
+func minimizeNote(hwnd uintptr) {
+	if n := windows[hwnd]; n != nil {
+		finishRename(hwnd, n, true)
+		hideLinkHint(n)
+		rememberNoteBounds(hwnd, n)
+		n.hovered, n.pressed = 0, 0
+		call(invalidateRect, hwnd, 0, 0)
+		call(showWindow, hwnd, 6) // SW_MINIMIZE; restore from the taskbar.
+	}
+}
+
+func minimizeAllNotes() {
+	for _, hwnd := range windowOrder {
+		minimizeNote(hwnd)
+	}
+}
+
 func quit() {
 	stopSaveTimer()
 	if err := saveAllExcept(0); err != nil {
@@ -1114,19 +1172,20 @@ func paintHeader(hwnd uintptr, n *note) {
 	if n.stack != nil {
 		paintStackArrows(dc, bounds.right, n, p)
 	}
-	labels := []string{"+", "◇", "⋯", "×"}
+	labels := []string{"⇊", "−", "+", "◇", "⋯", "×"}
+	buttons := []int{minimizeAllButton, minimizeButton, 1, 2, 3, 4}
 	if n.pinned {
-		labels[1] = "◆"
+		labels[3] = "◆"
 	}
-	widths := []int32{36, 36, 36, 36}
-	left := bounds.right - 144
+	widths := []int32{36, 36, 36, 36, 36, 36}
+	left := bounds.right - baseHeaderWidth
 	for i, label := range labels {
 		button := rect{left, 1, left + widths[i], headerH - 1}
-		if n.hovered == i+1 {
+		if n.hovered == buttons[i] {
 			call(fillRect, dc, uintptr(unsafe.Pointer(&button)), p.hover)
 		}
 		color := p.inkColor
-		if i == 3 {
+		if buttons[i] == 4 {
 			color = rgb(220, 55, 55)
 		}
 		text(dc, label, button, dtCenter|dtVCenter|dtSingleLine, color)
