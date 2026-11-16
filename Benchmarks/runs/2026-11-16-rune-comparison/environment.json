@@ -1,0 +1,134 @@
+{
+  "StartedUtc": "2026-11-16T20:30:41.5248580Z",
+  "OS": "Microsoft Windows NT 10.0.26300.0",
+  "Cpu": [
+    {
+      "Name": "AMD Ryzen 5 7600X 6-Core Processor             ",
+      "NumberOfCores": 6,
+      "NumberOfLogicalProcessors": 12
+    }
+  ],
+  "Gpu": [
+    {
+      "Name": "AMD Radeon(TM) Graphics",
+      "DriverVersion": "32.0.21030.2001"
+    },
+    {
+      "Name": "NVIDIA GeForce RTX 4070",
+      "DriverVersion": "32.0.16.2101"
+    }
+  ],
+  "LogicalProcessors": 12,
+  "Repetitions": 5,
+  "NoteCounts": [
+    1,
+    5
+  ],
+  "SettleSeconds": 5,
+  "CpuSeconds": 15,
+  "Seed": 20261116,
+  "Warmup": true,
+  "GitRevision": "568ad43ba2fd50b5ad67e995c9cccc91da109ea3",
+  "GitStatus": [
+    "?? Benchmarks/Build-Rune.ps1",
+    "?? Benchmarks/COMPARISON.md",
+    "?? Benchmarks/Measure-Comparison.ps1",
+    "?? Benchmarks/Write-ComparisonReport.ps1",
+    "?? Experiments/Pinny.Rune/"
+  ],
+  "Tools": {
+    "Rust": "rustc 1.98.1 (48a229cea 2026-09-01)",
+    "Dotnet": "8.0.425",
+    "Go": "go version go1.27.1 windows/amd64"
+  },
+  "Binaries": [
+    {
+      "Bytes": 71629583,
+      "Variant": "WPF",
+      "Path": "dist\\baseline-2026-09-27\\wpf\\Pinny.exe",
+      "Input": "JSON",
+      "Sha256": "62305D35195EF885BD92940AAB76BF984971CE8830BECD2A03CDCA9744FB59A5"
+    },
+    {
+      "Bytes": 71628362,
+      "Variant": "WinForms",
+      "Path": "dist\\baseline-2026-09-27\\winforms\\Pinny.WinForms.exe",
+      "Input": "JSON",
+      "Sha256": "3580E993A2C8B6BFEFD423E4B7D3AE8129D961DACFA1659CD4B118CBEDC1CBCD"
+    },
+    {
+      "Bytes": 35118973,
+      "Variant": "Win32",
+      "Path": "dist\\baseline-2026-09-27\\win32\\Pinny.Win32.exe",
+      "Input": "JSON",
+      "Sha256": "90FB2E229BCEBE7921C92D23BF693AA8523796975599B8131C815A024C33B831"
+    },
+    {
+      "Bytes": 290304,
+      "Variant": "Rust Win32",
+      "Path": "dist\\native\\Pinny.Rust.exe",
+      "Input": "synthetic",
+      "Sha256": "1AD9E91A49B387B64BA0C8998835F37BA2A7BF5A3281ED3F09D8C5C39D758F07"
+    },
+    {
+      "Bytes": 2860032,
+      "Variant": "Go Win32",
+      "Path": "dist\\native\\Pinny.Go.exe",
+      "Input": "JSON",
+      "Sha256": "B3D1F903D676FE095C8208A4D643FAD480F9CE2E017100DD036B237EBE005C5B"
+    },
+    {
+      "Bytes": 30470144,
+      "Variant": "Rust Rune",
+      "Path": "dist\\native\\Pinny.Rune.exe",
+      "Input": "JSON (read only)",
+      "Sha256": "04D98078101F4EA22A0C6844B5F6843E72A1BE2B11F65EE45FE2593BD59F037C"
+    }
+  ],
+  "SourceSizes": [
+    {
+      "Includes": "Experiments/Pinny.WpfBaseline",
+      "Bytes": 13240,
+      "Variant": "WPF",
+      "Files": 4,
+      "Lines": 359
+    },
+    {
+      "Includes": "Experiments/Pinny.WinForms, Experiments/Baseline",
+      "Bytes": 11620,
+      "Variant": "WinForms",
+      "Files": 5,
+      "Lines": 284
+    },
+    {
+      "Includes": "Experiments/Pinny.Win32, Experiments/Baseline",
+      "Bytes": 30937,
+      "Variant": "Win32",
+      "Files": 4,
+      "Lines": 629
+    },
+    {
+      "Includes": "Experiments/Pinny.Rust/src",
+      "Bytes": 20891,
+      "Variant": "Rust Win32",
+      "Files": 1,
+      "Lines": 483
+    },
+    {
+      "Includes": "Experiments/Pinny.Go",
+      "Bytes": 26088,
+      "Variant": "Go Win32",
+      "Files": 2,
+      "Lines": 915
+    },
+    {
+      "Includes": "Experiments/Pinny.Rune/src",
+      "Bytes": 8770,
+      "Variant": "Rust Rune",
+      "Files": 1,
+      "Lines": 291
+    }
+  ],
+  "StartupDefinition": "First visible note; all requested notes visible and WM_NULL-responsive, followed by DwmFlush. Neither proves first text paint.",
+  "Workload": "One/five Light notes, 320x320 requested units, same two-line text; positions 80+32*i. Rust Win32 constructs content in memory; others parse isolated JSON."
+}

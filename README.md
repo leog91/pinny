@@ -198,6 +198,11 @@ and [API and recovery](docs/SYNC.md).
 
 ## Performance experiments
 
+The [new Rune comparison series](Benchmarks/COMPARISON.md) adds a sixth UI option
+with separate dated reports, longer idle sampling, GPU counters and a small
+source/executable-size side note. It preserves the historical results below and
+documents every method change and its reason.
+
 The benchmark compares the five builds under `Experiments/`. It does not measure future changes to the active Go app under `Pinny.Go/`.
 
 ![Pinny benchmark: memory and first-window startup for five implementations](Benchmarks/benchmark.png)
