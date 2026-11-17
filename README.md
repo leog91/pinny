@@ -198,12 +198,36 @@ and [API and recovery](docs/SYNC.md).
 
 ## Performance experiments
 
-The [new Rune comparison series](Benchmarks/COMPARISON.md) adds a sixth UI option
-with separate dated reports, longer idle sampling, GPU counters and a small
-source/executable-size side note. It preserves the historical results below and
-documents every method change and its reason.
+### Benchmark reports
 
-The benchmark compares the five builds under `Experiments/`. It does not measure future changes to the active Go app under `Pinny.Go/`.
+| Benchmark | What it covers | Results and details |
+| --- | --- | --- |
+| **Latest UI comparison — 16 November 2026** | WPF, WinForms, C# Win32, Rust Win32, Go Win32 and Rust Rune; 60 measurements with one/five notes | [Report](Benchmarks/runs/2026-11-16-rune-comparison-02/README.md) · [Findings](Benchmarks/runs/2026-11-16-rune-comparison-02/NOTES.md) · [Raw CSV](Benchmarks/runs/2026-11-16-rune-comparison-02/results.csv) |
+| **Original UI comparison — 27 September 2026** | Five frozen implementations; 30 measurements, preserved unchanged | [Report](Benchmarks/README.md) · [Chart](Benchmarks/benchmark.png) · [Raw CSV](Benchmarks/results.csv) |
+| **Active Go memory investigation — 16 October 2026** | Before/after allocation benchmarks and whole-process measurements for the active app | [Report and commands](docs/MEMORY.md) |
+
+[All UI comparison attempts, method changes and rerun commands](Benchmarks/COMPARISON.md)
+· [Executable and source sizes, for curiosity](Benchmarks/runs/2026-11-16-rune-comparison-02/SIZE.md)
+· [Rune build and experiment notes](Experiments/Pinny.Rune/README.md)
+
+### Latest: six UI implementations including Rune
+
+![Latest Pinny benchmark: private working set, all-window responsiveness and idle CPU for six implementations](Benchmarks/runs/2026-11-16-rune-comparison-02/comparison.svg)
+
+The latest series adds Rune, longer idle sampling, GPU counters and timing until
+all requested windows respond. Rune's median private working set was **52.6 MiB
+with one note and 157.7 MiB with five**, versus **2.7 MiB at both counts for Go
+Win32**. See the [full report](Benchmarks/runs/2026-11-16-rune-comparison-02/README.md)
+for all six options, ranges and limitations. Responsive windows do not prove first
+rendered text, and CPU/GPU memory figures must not be added into a total.
+
+UI comparisons measure the builds under `Experiments/`, not the active Go app.
+The active-app memory investigation is a separate benchmark. Each series keeps
+its own results; methods and environments differ between dates.
+
+### Historical: original five-build comparison
+
+The following chart and values are the preserved September 2026 results.
 
 ![Pinny benchmark: memory and first-window startup for five implementations](Benchmarks/benchmark.png)
 
